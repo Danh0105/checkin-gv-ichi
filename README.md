@@ -1,4 +1,8 @@
-# KIDO EDU — Zalo Mini App giáo viên
+# ICHI SKILL — Zalo Mini App giáo viên
+
+## Hướng dẫn dành cho người dùng
+
+Xem [Hướng dẫn sử dụng ICHI SKILL Mini App](./HUONG_DAN_SU_DUNG.md) dành cho giáo viên và Nhân sự.
 
 Mini App dành riêng cho tài khoản có role `giaovien`, gồm ba tab chính:
 
