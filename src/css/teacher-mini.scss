@@ -28,7 +28,7 @@
   display: grid;
   height: calc(70px + var(--zalo-native-header-offset) + env(safe-area-inset-top));
   padding: calc(var(--zalo-native-header-offset) + env(safe-area-inset-top)) 12px 0 15px;
-  grid-template-columns: 54px minmax(0, 1fr) 34px 39px 34px;
+  grid-template-columns: 54px minmax(0, 1fr) 32px 32px 39px 32px;
   align-items: center;
   gap: 8px;
   color: white;
@@ -43,6 +43,7 @@
 
 .mini-notification-button,
 .mini-home,
+.mini-refresh,
 .mini-logout {
   position: relative;
   display: grid;
@@ -56,6 +57,7 @@
 }
 
 .mini-home { width: 32px; height: 32px; }
+.mini-refresh { width: 32px; height: 32px; }
 .mini-logout { width: 32px; height: 32px; }
 .mini-notification-button b { position: absolute; top: -3px; right: -4px; display: grid; min-width: 18px; height: 18px; padding: 0 3px; place-items: center; border: 2px solid var(--mini-blue); border-radius: 99px; color: white; background: #e84043; font-size: 8px; }
 .mini-icon { display: inline-grid; width: 24px; height: 24px; place-items: center; font-size: 24px; font-weight: 650; line-height: 1; }
@@ -321,7 +323,7 @@
 .mini-sheet { position: relative; width: 100%; max-height: 92svh; overflow-y: auto; border-radius: 20px 20px 0 0; background: white; box-shadow: 0 -12px 38px rgba(15,29,48,.18); animation: sheet-up .2s ease-out; }
 @keyframes sheet-up { from { transform: translateY(40px); opacity: .7; } }
 .mini-sheet > header { position: sticky; top: 0; z-index: 4; display: flex; height: 58px; align-items: center; justify-content: center; border-bottom: 1px solid #eceef1; background: white; }
-.mini-sheet > header h2 { margin: 0; font-size: 15px; }.mini-sheet > header > button { position: absolute; right: 13px; display: grid; width: 31px; height: 31px; place-items: center; border: 0; border-radius: 50%; color: #727c88; background: #f0f2f4; font-size: 18px; }
+.mini-sheet > header h2 { margin: 0; padding: 0 52px; font-size: 15px; }.mini-sheet > header > button { position: absolute; left: 13px; display: grid; width: 31px; height: 31px; place-items: center; border: 0; border-radius: 50%; color: #727c88; background: #f0f2f4; font-size: 18px; }
 .mini-sheet > header > button:disabled { cursor: wait; opacity: .45; }
 .sheet-handle { position: absolute; top: 6px; width: 38px; height: 4px; border-radius: 5px; background: #d9dde2; }
 
@@ -411,9 +413,9 @@
 .notification-list > button.schedule-confirm-alert .notification-card-icon { color: #b63731; background: #ffe0dd; }
 
 .notification-sheet { display: flex; height: min(82svh, 720px); max-height: 92svh; overflow: hidden; flex-direction: column; background: #f5f7fa; }
-.notification-sheet > header { flex: 0 0 61px; justify-content: flex-start; padding: 5px 52px 0 17px; }
+.notification-sheet > header { flex: 0 0 61px; justify-content: flex-end; padding: 5px 17px 0 52px; }
 .notification-sheet > header h2 { width: 100%; }
-.notification-title { display: flex; align-items: center; gap: 8px; color: #202a37; }
+.notification-title { display: flex; align-items: center; justify-content: flex-end; gap: 8px; color: #202a37; text-align: right; }
 .notification-title .notification-svg { flex: 0 0 auto; color: var(--mini-blue); }
 
 .notification-tabs { display: flex; height: 48px; padding: 0 12px; flex: 0 0 48px; align-items: stretch; gap: 4px; border-bottom: 1px solid #e3e7ed; background: white; }

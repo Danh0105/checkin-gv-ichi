@@ -5,13 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ListResponse, TeachingSession } from "@/types/teaching";
 
-const api = vi.hoisted(() => ({ me: vi.fn() }));
+const api = vi.hoisted(() => ({ me: vi.fn(), lesson: vi.fn() }));
 
 vi.mock("@/services/teacher-mini-api", () => ({
   TeacherApiError: class TeacherApiError extends Error {
     constructor(public status: number, message: string, public code: string | null = null) { super(message); }
   },
-  teacherMiniApi: { sessions: { me: api.me } },
+  teacherMiniApi: { sessions: { me: api.me, lesson: api.lesson } },
 }));
 
 import { TeacherIncomeScreen } from "@/components/teacher-mini/TeacherIncomeScreen";
@@ -57,6 +57,7 @@ const teachingSession = (overrides: Partial<TeachingSession> = {}): TeachingSess
   checkoutAt: "2026-08-11T01:52:00.000Z",
   lessonName: "Phép cộng",
   lessonEvaluation: "Học sinh tiếp thu tốt",
+  lessonSubmittedAt: "2026-08-11T02:05:00.000Z",
   ...overrides,
 });
 
@@ -72,10 +73,21 @@ const renderScreen = (initialMonth = "2026-08") => {
   return { onProfileMissing, onBackToSchedule };
 };
 
+const renderCompanyScreen = (initialMonth = "2026-08") => {
+  const onProfileMissing = vi.fn();
+  const onBackToSchedule = vi.fn();
+  render(<TeacherIncomeScreen initialMonth={initialMonth} onProfileMissing={onProfileMissing} onBackToSchedule={onBackToSchedule} companyTeacher />);
+  return { onProfileMissing, onBackToSchedule };
+};
+
+const getSessionPlace = (name: RegExp) => screen.getByText(name, { selector: ".income-session-place strong" });
+const querySessionPlace = (name: RegExp) => screen.queryByText(name, { selector: ".income-session-place strong" });
+
 afterEach(cleanup);
 
 beforeEach(() => {
   api.me.mockReset();
+  api.lesson.mockReset();
 });
 
 describe("TeacherIncomeScreen", () => {
@@ -96,27 +108,132 @@ describe("TeacherIncomeScreen", () => {
 
     expect((await screen.findAllByText("500.000 ₫")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("0 ₫").length).toBeGreaterThan(0);
-    expect(screen.getByText("2", { selector: ".income-stat-grid b" })).toBeInTheDocument();
-    expect(screen.getByText("3", { selector: ".income-stat-grid b" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "Chưa chấm công 1" }));
+    expect(screen.queryByText("Buổi được tính công")).not.toBeInTheDocument();
+    expect(screen.queryByText("Buổi chờ xác nhận")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Thống kê thu nhập")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Chưa chấm công từ nhân sự 3 tiết" }));
     expect(screen.getByText("Chờ xác nhận")).toBeInTheDocument();
     expect(screen.queryByText("Giáo viên không được hiển thị")).not.toBeInTheDocument();
   });
 
-  it("chia đúng các buổi đã chấm công và chưa chấm công thành hai tab", async () => {
+  it("chia đúng các tiết hoàn thành và chưa chấm công từ nhân sự thành hai tab", async () => {
     api.me.mockResolvedValue(response([
       teachingSession({ id: 1, schoolName: "Trường đã chấm", status: "PRESENT" }),
       teachingSession({ id: 2, schoolName: "Trường chưa chấm", status: "SCHEDULED", startTime: "10:00:00" }),
     ]));
     renderScreen();
 
-    expect(await screen.findByRole("tab", { name: "Đã chấm công 1" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("tab", { name: "Hoàn thành 1 tiết" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText(/Trường đã chấm/)).toBeInTheDocument();
     expect(screen.queryByText(/Trường chưa chấm/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("tab", { name: "Chưa chấm công 1" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Chưa chấm công từ nhân sự 1 tiết" }));
     expect(screen.getByText(/Trường chưa chấm/)).toBeInTheDocument();
     expect(screen.queryByText(/Trường đã chấm/)).not.toBeInTheDocument();
+  });
+
+  it("cho phép bấm tab để xem chi tiết từng nhóm tiết", async () => {
+    api.me.mockResolvedValue(response([
+      teachingSession({ id: 1, schoolName: "Trường đã chấm", status: "PRESENT" }),
+      teachingSession({ id: 2, schoolName: "Trường chưa chấm", status: "SCHEDULED", startTime: "10:00:00" }),
+    ]));
+    renderScreen();
+
+    await screen.findByRole("tab", { name: "Hoàn thành 1 tiết" });
+    fireEvent.click(screen.getByRole("tab", { name: "Chưa chấm công từ nhân sự 1 tiết" }));
+    expect(screen.getByText("Các tiết chưa chấm công từ nhân sự")).toBeInTheDocument();
+    expect(screen.getByText(/Trường chưa chấm/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Hoàn thành 1 tiết" }));
+    expect(screen.getByText("Các tiết hoàn thành")).toBeInTheDocument();
+    expect(screen.getByText(/Trường đã chấm/)).toBeInTheDocument();
+  });
+
+  it("xếp tiết thiếu check-in, check-out hoặc báo giảng vào nhóm chưa đủ 3 yếu tố", async () => {
+    api.me.mockResolvedValue(response([
+      teachingSession({ id: 1, schoolName: "Thiếu báo giảng", lessonSubmittedAt: null }),
+      teachingSession({ id: 2, schoolName: "Đủ nhưng chờ nhân sự", status: "SCHEDULED", startTime: "10:00:00" }),
+    ]));
+    renderScreen();
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Chưa đủ 3 yếu tố 1 tiết" }));
+    expect(screen.getByText("Các tiết chưa đủ 3 yếu tố để chấm công")).toBeInTheDocument();
+    expect(getSessionPlace(/Thiếu báo giảng/)).toBeInTheDocument();
+    expect(querySessionPlace(/Đủ nhưng chờ nhân sự/)).not.toBeInTheDocument();
+  });
+
+  it("lọc nhóm chưa đủ 3 yếu tố theo check-in, check-out và báo giảng", async () => {
+    api.me.mockResolvedValue(response([
+      teachingSession({ id: 1, schoolName: "Thiếu check-in", checkinAt: null }),
+      teachingSession({ id: 2, schoolName: "Thiếu check-out", checkoutAt: null, startTime: "10:00:00" }),
+      teachingSession({ id: 3, schoolName: "Thiếu báo giảng", lessonSubmittedAt: null, startTime: "11:00:00" }),
+      teachingSession({ id: 4, schoolName: "Thiếu check-in và báo giảng", checkinAt: null, lessonSubmittedAt: null, startTime: "12:00:00" }),
+    ]));
+    renderScreen();
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Chưa đủ 3 yếu tố 4 tiết" }));
+    expect(screen.getByRole("button", { name: "Tất cả 4 tiết" })).toHaveAttribute("aria-pressed", "true");
+    expect(getSessionPlace(/^Thiếu check-in ·/)).toBeInTheDocument();
+    expect(getSessionPlace(/Thiếu check-out/)).toBeInTheDocument();
+    expect(getSessionPlace(/Thiếu báo giảng/)).toBeInTheDocument();
+    expect(getSessionPlace(/^Thiếu check-in và báo giảng ·/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Thiếu check-in 2 tiết" }));
+    expect(getSessionPlace(/^Thiếu check-in ·/)).toBeInTheDocument();
+    expect(getSessionPlace(/^Thiếu check-in và báo giảng ·/)).toBeInTheDocument();
+    expect(querySessionPlace(/Thiếu check-out/)).not.toBeInTheDocument();
+    expect(querySessionPlace(/Thiếu báo giảng/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Thiếu check-out 1 tiết" }));
+    expect(querySessionPlace(/^Thiếu check-in ·/)).not.toBeInTheDocument();
+    expect(getSessionPlace(/Thiếu check-out/)).toBeInTheDocument();
+    expect(querySessionPlace(/Thiếu báo giảng/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Thiếu báo giảng 1 tiết" }));
+    expect(querySessionPlace(/^Thiếu check-in ·/)).not.toBeInTheDocument();
+    expect(querySessionPlace(/^Thiếu check-in và báo giảng ·/)).not.toBeInTheDocument();
+    expect(querySessionPlace(/Thiếu check-out/)).not.toBeInTheDocument();
+    expect(getSessionPlace(/Thiếu báo giảng/)).toBeInTheDocument();
+  });
+
+  it("mở form báo giảng từ thẻ tiết thiếu báo giảng trong doanh thu", async () => {
+    api.me.mockResolvedValue(response([
+      teachingSession({ id: 1, schoolName: "Thiếu báo giảng", lessonSubmittedAt: null }),
+    ]));
+    renderScreen();
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Chưa đủ 3 yếu tố 1 tiết" }));
+    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết thu nhập ngày 11/08/2026" }));
+    expect(screen.getByRole("button", { name: "Báo giảng" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Báo giảng" }));
+    expect(screen.getByRole("dialog", { name: "Báo giảng" })).toBeInTheDocument();
+  });
+
+  it("đánh dấu tiết liên tục là đủ check-in và check-out trong nhóm doanh thu", async () => {
+    api.me.mockResolvedValue(response([
+      teachingSession({
+        id: 1,
+        schoolName: "Tiết liền kề",
+        checkinAt: null,
+        checkoutAt: null,
+        checkinRequired: false,
+        checkoutRequired: false,
+        lessonSubmittedAt: null,
+      }),
+    ]));
+    renderScreen();
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Chưa đủ 3 yếu tố 1 tiết" }));
+    expect(screen.getByRole("button", { name: "Thiếu check-in 0 tiết" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Thiếu check-out 0 tiết" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Thiếu báo giảng 1 tiết" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Thiếu báo giảng 1 tiết" }));
+    expect(getSessionPlace(/Tiết liền kề/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết thu nhập ngày 11/08/2026" }));
+    expect(screen.getAllByText("Đã ghi nhận theo tiết liên tục")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Báo giảng" })).toBeInTheDocument();
   });
 
   it("hiển thị rõ null và buổi chưa có đơn giá", async () => {
@@ -126,7 +243,63 @@ describe("TeacherIncomeScreen", () => {
     expect(await screen.findByText("Chưa xác định số tiết")).toBeInTheDocument();
     expect(screen.getByText("Chưa có đơn giá")).toBeInTheDocument();
     expect(screen.getByText("Chưa xác định")).toBeInTheDocument();
-    expect(screen.getByText(/1 buổi đã xác nhận chưa có thành tiền/)).toBeInTheDocument();
+    expect(screen.getByText("Có tiết đã xác nhận chưa có thành tiền nên chưa được cộng vào tổng.")).toBeInTheDocument();
+  });
+
+  it("hiển thị thu nhập dự kiến cho tiết tương lai nếu hoàn thành", async () => {
+    api.me.mockResolvedValue(response([
+      teachingSession({
+        id: 1,
+        date: "2026-09-05",
+        status: "SCHEDULED",
+        statusLabel: "Chưa chấm",
+        periods: 3,
+        ratePerPeriod: 250_000,
+        amount: null,
+        totalAmount: undefined,
+        checkinAt: null,
+        checkoutAt: null,
+        lessonSubmittedAt: null,
+      }),
+    ]));
+    renderScreen("2026-09");
+
+    expect(await screen.findByText("Tổng thu nhập nếu hoàn thành tháng 09/2026")).toBeInTheDocument();
+    expect(screen.getAllByText("750.000 ₫").length).toBeGreaterThan(0);
+    expect(screen.getByText("Dự kiến còn lại")).toBeInTheDocument();
+    expect(screen.getByText("Số tiết dự kiến")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Chưa đủ 3 yếu tố 3 tiết" }));
+    expect(screen.getByText("Dự kiến nếu hoàn thành")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết thu nhập ngày 05/09/2026" }));
+    expect(screen.getByText("Dự kiến tiền tiết dạy")).toBeInTheDocument();
+    expect(screen.getByText("Tổng dự kiến")).toBeInTheDocument();
+  });
+
+  it("giữ thu nhập theo tiết cho giáo viên cộng tác viên", async () => {
+    api.me.mockResolvedValue(response([
+      teachingSession({ id: 1, amount: null, totalAmount: undefined, periods: 2, ratePerPeriod: 120_000, status: "SCHEDULED", checkinAt: null, checkoutAt: null, lessonSubmittedAt: null }),
+    ]));
+    renderScreen();
+
+    expect(await screen.findByText("Tổng thu nhập nếu hoàn thành tháng 08/2026")).toBeInTheDocument();
+    expect(screen.getAllByText("240.000 ₫").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("tab", { name: "Chưa đủ 3 yếu tố 2 tiết" }));
+    expect(screen.getByText("2 tiết × 120.000 ₫")).toBeInTheDocument();
+  });
+
+  it("hiển thị phụ cấp xăng cho giáo viên công ty thay vì đơn giá mỗi tiết", async () => {
+    api.me.mockResolvedValue(response([
+      teachingSession({ id: 1, amount: null, ratePerPeriod: null, gasAllowance: 20_000, distanceToSchoolKm: 0.01 }),
+    ]));
+    renderCompanyScreen();
+
+    expect(await screen.findByText("Phụ cấp xăng tháng 08/2026")).toBeInTheDocument();
+    expect(screen.getByText("Theo lần đến trường")).toBeInTheDocument();
+    expect(screen.getByText("20.000 ₫ · 0,01 km")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết thu nhập ngày 11/08/2026" }));
+    expect(screen.getAllByText("Phụ cấp xăng").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Đơn giá mỗi tiết")).not.toBeInTheDocument();
   });
 
   it("mở bottom sheet với dữ liệu chấm công và bài học", async () => {
@@ -170,18 +343,22 @@ describe("TeacherIncomeScreen", () => {
     expect(onBackToSchedule).toHaveBeenCalledOnce();
   });
 
-  it("chuyển tháng trước/sau bằng đúng khoảng ngày và chặn tháng tương lai", async () => {
+  it("chuyển tháng trước/sau bằng đúng khoảng ngày và cho phép xem tháng tương lai", async () => {
     api.me.mockResolvedValue(response([]));
     renderScreen("2026-08");
     await screen.findByText("Chưa có dữ liệu thu nhập trong tháng này.");
 
-    expect(screen.getByRole("button", { name: "Tháng sau" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Tháng sau" })).not.toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Tháng trước" }));
     await waitFor(() => expect(api.me).toHaveBeenLastCalledWith({ fromDate: "2026-07-01", toDate: "2026-07-31", page: 1, limit: 100 }, expect.any(AbortSignal)));
     expect(screen.getByText("Tháng 07/2026")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Tháng sau" }));
     await waitFor(() => expect(screen.getByText("Tháng 08/2026")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Tháng sau" }));
+    await waitFor(() => expect(api.me).toHaveBeenLastCalledWith({ fromDate: "2026-09-01", toDate: "2026-09-30", page: 1, limit: 100 }, expect.any(AbortSignal)));
+    expect(screen.getByText("Tháng 09/2026")).toBeInTheDocument();
   });
 
   it.each([

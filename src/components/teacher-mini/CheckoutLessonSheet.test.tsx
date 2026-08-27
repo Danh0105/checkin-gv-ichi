@@ -81,27 +81,28 @@ describe("attendance and lesson report flows", () => {
   it.each([
     [{ checkinRequired: true, checkoutRequired: false, checkinAt: null }, "Check-in"],
     [{ checkinRequired: false, checkoutRequired: true, checkinAt: null }, "Check-out"],
+    [{ checkinRequired: false, checkoutRequired: false, checkinAt: null }, "Check-out"],
+    [{ checkinRequired: true, checkoutRequired: false, checkinAt: "2026-08-25T01:00:00Z" }, "Check-out"],
   ])("renders the backend-directed attendance action", (flags, button) => {
     render(<SessionDetailSheet session={{ ...session, ...flags }} onClose={vi.fn()} onUpdate={vi.fn()} onDeclined={vi.fn()} notify={vi.fn()} />);
     expect(screen.getByRole("button", { name: button })).toBeEnabled();
   });
 
-  it("renders no attendance action for a middle block session", () => {
+  it("renders check-out for a middle block session", () => {
     render(<SessionDetailSheet session={{ ...session, checkinRequired: false, checkoutRequired: false }} onClose={vi.fn()} onUpdate={vi.fn()} onDeclined={vi.fn()} notify={vi.fn()} />);
-    expect(screen.getByText("Tiết này không cần thao tác chấm công.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Check-in|Check-out/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Check-out" })).toBeEnabled();
   });
 
-  it("checks out a final session with null checkinAt and refreshes the whole range", async () => {
+  it("checks out any session with null checkinAt, refreshes the whole range, and opens lesson reporting", async () => {
     const onRefresh = vi.fn(async () => undefined);
     const onUpdate = vi.fn();
-    render(<SessionDetailSheet session={{ ...session, checkinRequired: false, checkoutRequired: true, checkinAt: null }} onClose={vi.fn()} onUpdate={onUpdate} onDeclined={vi.fn()} onRefresh={onRefresh} notify={vi.fn()} />);
+    render(<SessionDetailSheet session={{ ...session, checkinRequired: false, checkoutRequired: false, checkinAt: null }} onClose={vi.fn()} onUpdate={onUpdate} onDeclined={vi.fn()} onRefresh={onRefresh} notify={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Check-out" }));
     await waitFor(() => expect(api.checkout).toHaveBeenCalledWith(123, { latitude: 10.7, longitude: 106.7 }));
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ checkoutAt: "2026-08-25T02:00:00Z" }));
     expect(onUpdate.mock.invocationCallOrder[0]).toBeLessThan(onRefresh.mock.invocationCallOrder[0]);
     expect(onRefresh).toHaveBeenCalledWith(123, expect.objectContaining({ checkoutAt: "2026-08-25T02:00:00Z" }));
-    expect(screen.queryByLabelText(/Tên bài học/)).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Báo giảng" })).toBeInTheDocument();
   });
 
   it("shows check-in status immediately from the mutation response", () => {
@@ -123,7 +124,7 @@ describe("attendance and lesson report flows", () => {
   it("shows lesson report action only after attendance", () => {
     render(<SessionDetailSheet session={{ ...session, checkoutAt: "2026-08-25T02:00:00Z" }} onClose={vi.fn()} onUpdate={vi.fn()} onDeclined={vi.fn()} notify={vi.fn()} />);
     expect(screen.getByText("✓ Đã chấm công.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Báo giảng" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nộp nội dung bài dạy" }));
     expect(screen.getByRole("heading", { name: "Báo giảng" })).toBeInTheDocument();
   });
 

@@ -44,4 +44,16 @@ describe("lesson report notification", () => {
     fireEvent.click(await screen.findByRole("button", { name: new RegExp(title) }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith(expectedTarget));
   });
+
+  it("ẩn thông báo đổi vị trí với giáo viên cộng tác viên", async () => {
+    api.list.mockResolvedValue({ data: [
+      { id: 11, type: "TEACHER_LOCATION_CHANGE_RESULT", message: "Vị trí mới đã được duyệt", isRead: false, meta: { kind: "TEACHER_LOCATION_CHANGE_RESULT", approved: true } },
+      { id: 12, type: "TEACHING_LESSON_REPORT_ALERT", message: "Còn 1 tiết chưa báo giảng", isRead: false, meta: { kind: "lesson_report_missing", date: "2026-08-25", sessionIds: [101] } },
+    ], pagination: {} });
+
+    render(<NotificationSheet onClose={vi.fn()} notify={vi.fn()} companyTeacher={false} />);
+
+    expect(await screen.findByRole("button", { name: /Nhắc báo giảng/ })).toBeInTheDocument();
+    expect(screen.queryByText("Vị trí mới đã được duyệt")).not.toBeInTheDocument();
+  });
 });

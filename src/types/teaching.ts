@@ -13,6 +13,7 @@ export type TeachingRole =
 
 export const isTeacherRole = (role: string): role is TeacherRole => (TEACHER_ROLES as readonly string[]).includes(role);
 export const hasTeacherRole = (roles: readonly string[] | null | undefined) => roles?.some(isTeacherRole) ?? false;
+export const isCompanyTeacher = (roles: readonly string[] | null | undefined) => roles?.includes("giaovien_congty") ?? false;
 
 export type SessionStatus = "SCHEDULED" | "PRESENT" | "ABSENT" | "EXCUSED" | "CANCELLED";
 export type AssignmentStatus = "OPEN" | "ASSIGNED" | "CLOSED" | "CANCELLED";
@@ -198,6 +199,8 @@ export interface TeachingSession {
   periods?: number | null;
   ratePerPeriod?: number | null;
   amount?: number | null;
+  distanceToSchoolKm?: number | null;
+  gasAllowance?: number | null;
   /** Optional so cached sessions from before the API rollout remain readable. */
   otherCosts?: AttendanceOtherCost[];
   otherCostsTotal?: number;
@@ -208,6 +211,7 @@ export interface TeachingSession {
   checkinDistance?: number | null;
   checkinOutOfRange?: boolean | null;
   checkoutAt?: string | null;
+  checkoutViaAdjacent?: boolean | null;
   checkoutDistance?: number | null;
   checkoutOutOfRange?: boolean | null;
   lessonName?: string | null;

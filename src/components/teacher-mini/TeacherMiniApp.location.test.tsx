@@ -114,12 +114,12 @@ describe("giao diện thao tác định vị", () => {
     expect(api.checkin).not.toHaveBeenCalled();
   });
 
-  it("bấm Check-out lấy vị trí và gửi ngay, không mở form nội dung", async () => {
+  it("bấm Check-out lấy vị trí, gửi ngay, rồi mở form báo giảng", async () => {
     const checkedIn = { ...session, checkinRequired: false, checkoutRequired: true, checkinAt: null };
     render(<SessionDetailSheet session={checkedIn} onClose={vi.fn()} onUpdate={vi.fn()} onDeclined={vi.fn()} notify={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Check-out" }));
     await waitFor(() => expect(api.checkout).toHaveBeenCalledWith(123, { latitude: 10.7, longitude: 106.7 }));
-    expect(screen.queryByLabelText(/Tên bài học/)).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Báo giảng" })).toBeInTheDocument();
     expect(api.checkin).not.toHaveBeenCalled();
   });
 

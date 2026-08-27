@@ -66,6 +66,9 @@ describe("teacher income calculations", () => {
     expect(summarizeTeacherIncome("2026-08", sessions)).toEqual({
       month: "2026-08",
       totalIncome: 350_000,
+      projectedIncome: 1_250_000,
+      projectedSessions: 4,
+      projectedPeriods: 7,
       payableSessions: 3,
       payablePeriods: 4,
       pendingSessions: 1,
@@ -82,6 +85,9 @@ describe("teacher income calculations", () => {
 
     expect(summarizeTeacherIncome("2026-08", sessions)).toMatchObject({
       totalIncome: 0,
+      projectedIncome: 0,
+      projectedSessions: 2,
+      projectedPeriods: 0,
       payableSessions: 1,
       payablePeriods: 0,
       pendingSessions: 1,

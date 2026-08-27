@@ -11,22 +11,32 @@ export type TeacherIncomeSession = {
   periods: number | null;
   ratePerPeriod: number | null;
   amount: number | null;
+  distanceToSchoolKm: number | null;
+  gasAllowance: number | null;
   otherCosts: AttendanceOtherCost[];
   otherCostsTotal: number;
   totalAmount: number | null;
   status: SessionStatus;
   statusLabel: string | null;
   checkedAt: string | null;
+  checkinRequired: boolean | null;
   checkinAt: string | null;
+  checkoutRequired: boolean | null;
   checkoutAt: string | null;
+  checkoutViaAdjacent: boolean | null;
   attendanceNote: string | null;
   lessonName: string | null;
   lessonEvaluation: string | null;
+  lessonSubmittedAt: string | null;
+  lessonReportDueAt: string | null;
 };
 
 export type TeacherIncomeSummary = {
   month: string;
   totalIncome: number;
+  projectedIncome: number;
+  projectedSessions: number;
+  projectedPeriods: number;
   payableSessions: number;
   payablePeriods: number;
   pendingSessions: number;
@@ -111,6 +121,18 @@ export function formatVnd(value: number) {
   return VND_FORMATTER.format(value).replace(/\u00a0/g, " ");
 }
 
+export function estimateTeachingAmount(session: Pick<TeacherIncomeSession, "amount" | "periods" | "ratePerPeriod">) {
+  if (finiteMoney(session.amount)) return session.amount;
+  if (session.periods !== null && Number.isFinite(session.periods) && finiteMoney(session.ratePerPeriod)) return session.periods * session.ratePerPeriod;
+  return null;
+}
+
+export function estimateSessionTotal(session: Pick<TeacherIncomeSession, "amount" | "periods" | "ratePerPeriod" | "otherCostsTotal" | "totalAmount">) {
+  if (finiteMoney(session.totalAmount)) return session.totalAmount;
+  const teachingAmount = estimateTeachingAmount(session);
+  return teachingAmount === null ? null : teachingAmount + session.otherCostsTotal;
+}
+
 export function toTeacherIncomeSession(session: TeachingSession): TeacherIncomeSession {
   const amount = finiteNumberOrNull(session.amount);
   return {
@@ -124,6 +146,8 @@ export function toTeacherIncomeSession(session: TeachingSession): TeacherIncomeS
     periods: finiteNumberOrNull(session.periods),
     ratePerPeriod: finiteNumberOrNull(session.ratePerPeriod),
     amount,
+    distanceToSchoolKm: finiteNumberOrNull(session.distanceToSchoolKm),
+    gasAllowance: finiteNumberOrNull(session.gasAllowance),
     otherCosts: Array.isArray(session.otherCosts) ? session.otherCosts.map((cost) => ({ ...cost, note: cost.note ?? null })) : [],
     otherCostsTotal: finiteNumberOrNull(session.otherCostsTotal) ?? 0,
     // Sessions cached before the other-costs rollout do not have totalAmount.
@@ -131,11 +155,16 @@ export function toTeacherIncomeSession(session: TeachingSession): TeacherIncomeS
     status: session.status,
     statusLabel: session.statusLabel,
     checkedAt: session.checkedAt,
+    checkinRequired: session.checkinRequired ?? null,
     checkinAt: session.checkinAt,
+    checkoutRequired: session.checkoutRequired ?? null,
     checkoutAt: session.checkoutAt ?? null,
+    checkoutViaAdjacent: session.checkoutViaAdjacent ?? null,
     attendanceNote: session.attendanceNote,
     lessonName: session.lessonName ?? null,
     lessonEvaluation: session.lessonEvaluation ?? null,
+    lessonSubmittedAt: session.lessonSubmittedAt ?? null,
+    lessonReportDueAt: session.lessonReportDueAt ?? null,
   };
 }
 
@@ -148,9 +177,16 @@ export function incomeState(session: TeacherIncomeSession): IncomeState {
 
 export function summarizeTeacherIncome(month: string, sessions: TeacherIncomeSession[]): TeacherIncomeSummary {
   const payable = sessions.filter((session) => incomeState(session) === "confirmed");
+  const projected = sessions.filter((session) => incomeState(session) !== "not-payable");
   return {
     month,
     totalIncome: payable.reduce((total, session) => finiteMoney(session.totalAmount) ? total + session.totalAmount : total, 0),
+    projectedIncome: projected.reduce((total, session) => {
+      const estimate = estimateSessionTotal(session);
+      return estimate === null ? total : total + estimate;
+    }, 0),
+    projectedSessions: projected.length,
+    projectedPeriods: projected.reduce((total, session) => session.periods !== null && Number.isFinite(session.periods) ? total + session.periods : total, 0),
     payableSessions: payable.length,
     payablePeriods: payable.reduce((total, session) => session.periods !== null && Number.isFinite(session.periods) ? total + session.periods : total, 0),
     pendingSessions: sessions.filter((session) => incomeState(session) === "pending").length,

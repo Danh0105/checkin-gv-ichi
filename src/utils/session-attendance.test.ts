@@ -8,18 +8,18 @@ const baseSession = { id: 1, assignmentStatus: "ASSIGNED", status: "SCHEDULED", 
 describe("getSessionAttendanceAction", () => {
   it.each([
     [{ checkinRequired: true, checkoutRequired: false, checkinAt: null }, "checkin"],
-    [{ checkinRequired: true, checkoutRequired: false, checkinAt: "2026-08-25T00:30:00Z" }, null],
-    [{ checkinRequired: false, checkoutRequired: false, checkinAt: null }, null],
+    [{ checkinRequired: true, checkoutRequired: false, checkinAt: "2026-08-25T00:30:00Z" }, "checkout"],
+    [{ checkinRequired: false, checkoutRequired: false, checkinAt: null }, "checkout"],
     [{ checkinRequired: false, checkoutRequired: true, checkinAt: null }, "checkout"],
     [{ checkinRequired: true, checkoutRequired: true, checkinAt: null }, "checkin"],
     [{ checkinRequired: true, checkoutRequired: true, checkinAt: "2026-08-25T00:30:00Z" }, "checkout"],
-  ])("uses backend flags for %o", (changes, expected) => {
+  ])("requires every incomplete session to check out for %o", (changes, expected) => {
     expect(getSessionAttendanceAction({ ...baseSession, ...changes })).toBe(expected);
   });
 
-  it("does not infer a legacy action when backend flags are absent", () => {
-    expect(getSessionAttendanceAction(baseSession)).toBeNull();
-    expect(getSessionAttendanceAction({ ...baseSession, checkinAt: "2026-08-25T00:30:00Z" })).toBeNull();
+  it("checks out incomplete assigned sessions even when backend block flags are absent", () => {
+    expect(getSessionAttendanceAction(baseSession)).toBe("checkout");
+    expect(getSessionAttendanceAction({ ...baseSession, checkinAt: "2026-08-25T00:30:00Z" })).toBe("checkout");
   });
 
   it.each(["PENDING", "REJECTED"] as const)("blocks attendance while confirmation is %s", (confirmationStatus) => {

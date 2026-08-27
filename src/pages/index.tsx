@@ -20,7 +20,7 @@ import { readZaloIdentity, requestFollowOA, ZaloIdentity } from "@/services/zalo
 import { registerFcmToken, unregisterFcmToken } from "@/services/fcm";
 import { vibrateAlert } from "@/services/haptics";
 import { connectSocket, disconnectSocket, onSocketResync, onTeacherNotification } from "@/services/socket";
-import { hasTeacherRole, Teacher, TeachingRole, TeachingUser } from "@/types/teaching";
+import { hasTeacherRole, isCompanyTeacher, Teacher, TeachingNotification, TeachingRole, TeachingUser } from "@/types/teaching";
 import { getCurrentPosition, googleMapsUrl } from "@/utils/geo";
 import { createProfileAvatarDataUrl, PROFILE_AVATAR_ACCEPT } from "@/utils/profile-avatar";
 
@@ -51,12 +51,28 @@ const publicUtilities: { feature: ProtectedFeature; label: string; icon: PublicI
   { feature: "income", label: "Thu nhập của tôi", icon: "income" },
 ];
 
+function isLocationChangeNotification(item: TeachingNotification) {
+  return (item.type || item.meta?.kind || item.metadata?.kind || "") === "TEACHER_LOCATION_CHANGE_RESULT";
+}
+
 function PublicHome({ user, notificationsOpen, onFeature, onCloseNotifications }: { user: TeachingUser | null; notificationsOpen: boolean; onFeature: (feature: ProtectedFeature) => void; onCloseNotifications: () => void }) {
   const { openSnackbar } = useSnackbar();
   const [unread, setUnread] = useState(0);
   const notify = useCallback((message: string, tone: "success" | "error" | "warning" = "success") => openSnackbar({ text: message, type: tone, position: "bottom", duration: 3200, icon: true, zIndex: 250 }), [openSnackbar]);
 
-  const refreshUnread = useCallback(() => { teacherMiniApi.notifications.unreadCount().then(setUnread).catch(() => undefined); }, []);
+  const refreshUnread = useCallback(() => {
+    if (!user) {
+      setUnread(0);
+      return;
+    }
+    if (isCompanyTeacher(user.roles)) {
+      teacherMiniApi.notifications.unreadCount().then(setUnread).catch(() => undefined);
+      return;
+    }
+    teacherMiniApi.notifications.list("unread").then((result) => {
+      setUnread(result.data.filter((item) => !isLocationChangeNotification(item)).length);
+    }).catch(() => undefined);
+  }, [user]);
   useEffect(() => {
     if (!user) { setUnread(0); return; }
     refreshUnread();
@@ -65,9 +81,11 @@ function PublicHome({ user, notificationsOpen, onFeature, onCloseNotifications }
   useEffect(() => {
     if (!user) return;
     const offNotification = onTeacherNotification((item) => {
+      const type = item.type || item.meta?.kind || item.metadata?.kind || "";
+      if (!isCompanyTeacher(user.roles) && isLocationChangeNotification(item)) return;
       setUnread((value) => value + 1);
       if (item.type === "TEACHING_SCHEDULE_CONFIRM_REQUEST" || item.type === "TEACHING_SCHEDULE_CONFIRM_ALERT") { notify(item.message || "Bạn có lịch dạy cần xác nhận", "warning"); vibrateAlert(); }
-      if (item.type === "TEACHER_LOCATION_CHANGE_RESULT") notify(item.message || (item.meta?.approved === false ? "Yêu cầu đổi vị trí của bạn đã bị từ chối." : "Vị trí mới của bạn đã được duyệt."), item.meta?.approved === false ? "warning" : "success");
+      if (type === "TEACHER_LOCATION_CHANGE_RESULT") notify(item.message || (item.meta?.approved === false ? "Yêu cầu đổi vị trí của bạn đã bị từ chối." : "Vị trí mới của bạn đã được duyệt."), item.meta?.approved === false ? "warning" : "success");
     });
     const offResync = onSocketResync(refreshUnread);
     return () => { offNotification(); offResync(); };
@@ -110,7 +128,7 @@ function PublicHome({ user, notificationsOpen, onFeature, onCloseNotifications }
         <button className="active"><PublicIcon name="home" size={27} /><span>Trang chủ</span></button>
         <button onClick={() => onFeature("profile")}><PublicIcon name="user" size={27} /><span>{user ? "Cá nhân" : "Đăng nhập"}</span></button>
       </nav>
-      {notificationsOpen && user && <NotificationSheet onClose={onCloseNotifications} notify={notify} onCountChange={(change) => setUnread((value) => Math.max(0, value + change))} onUnreadCountChange={setUnread} onNavigateScheduleConfirmation={() => { onCloseNotifications(); onFeature("schedule"); }} />}
+      {notificationsOpen && user && <NotificationSheet onClose={onCloseNotifications} notify={notify} onCountChange={(change) => setUnread((value) => Math.max(0, value + change))} onUnreadCountChange={setUnread} onNavigateScheduleConfirmation={() => { onCloseNotifications(); onFeature("schedule"); }} companyTeacher={isCompanyTeacher(user.roles)} />}
     </main>
   );
 }
@@ -169,6 +187,7 @@ function ProfileEditor({ profile, onClose, onSave }: { profile: EditableProfile;
 
 function ProfilePage({ user, onHome, onIncome, onLogout, onProfileChange }: { user: TeachingUser; onHome: () => void; onIncome: () => void; onLogout: () => void; onProfileChange: (profile: Pick<TeachingUser, "name" | "phone" | "email">) => void }) {
   const { openSnackbar } = useSnackbar();
+  const companyTeacher = isCompanyTeacher(user.roles);
   const [profile, setProfile] = useState<Teacher | null>(null);
   const [preferences, setPreferences] = useState<TeacherProfilePreferences | null>(null);
   const [loading, setLoading] = useState(true);
@@ -183,14 +202,18 @@ function ProfilePage({ user, onHome, onIncome, onLogout, onProfileChange }: { us
     return () => { active = false; };
   }, [user.id]);
 
-  useEffect(() => onTeacherNotification((item) => {
+  useEffect(() => {
+    if (!companyTeacher) return undefined;
+    return onTeacherNotification((item) => {
     if (item.type === "TEACHER_LOCATION_CHANGE_RESULT") teacherMiniApi.teacher.me().then(setProfile).catch(() => undefined);
-  }), []);
+    });
+  }, [companyTeacher]);
 
   const hasLocation = profile?.latitude != null && profile?.longitude != null;
   const locationPending = profile?.locationChangeStatus === "pending";
 
   const updateLocation = async () => {
+    if (!companyTeacher) return;
     if (updatingLocation || locationPending) return;
     setUpdatingLocation(true);
     try {
@@ -233,13 +256,13 @@ function ProfilePage({ user, onHome, onIncome, onLogout, onProfileChange }: { us
         <div><span>Email</span><b>{loading && !email ? "Đang tải…" : email || "Chưa cập nhật"}</b></div>
         {loadError && <p role="status">{loadError}</p>}
       </section>
-      <section className="profile-location-card" aria-label="Vị trí của tôi">
+      {companyTeacher && <section className="profile-location-card" aria-label="Vị trí của tôi">
         <header><span>Vị trí của tôi</span></header>
         {hasLocation ? <div className="profile-location-current"><div className="profile-location-row-heading"><span>Vị trí hiện tại</span><b className="profile-location-badge tone-done">Đã duyệt</b></div><b>{profile!.latitude!.toFixed(6)}, {profile!.longitude!.toFixed(6)}</b><a href={googleMapsUrl(profile!.latitude!, profile!.longitude!)} target="_blank" rel="noreferrer">Xem trên bản đồ</a></div>
           : <p className="profile-location-empty">{loading ? "Đang tải…" : "Chưa có vị trí"}</p>}
         {locationPending && profile?.pendingLocation && <div className="profile-location-pending"><div className="profile-location-row-heading"><span>Vị trí đề nghị</span><b className="profile-location-badge tone-pending">Đang chờ duyệt</b></div><b>{profile.pendingLocation.latitude.toFixed(6)}, {profile.pendingLocation.longitude.toFixed(6)}</b><small>Vị trí này chưa dùng để chấm công cho đến khi được duyệt.</small></div>}
         <button type="button" className="profile-location-button" onClick={updateLocation} disabled={updatingLocation || locationPending}>{updatingLocation ? "Đang lấy vị trí…" : locationPending ? "Đang chờ duyệt" : hasLocation ? "Cập nhật vị trí" : "Ghi nhận vị trí"}</button>
-      </section>
+      </section>}
       <section className="profile-actions" aria-label="Tác vụ tài khoản">
         <button type="button" onClick={onIncome}><span><PublicIcon name="income" size={19} /> Thu nhập của tôi</span><em>›</em></button>
         <button type="button" onClick={() => setEditing(true)}><span><PublicIcon name="edit" size={18} /> Chỉnh sửa thông tin</span><em>›</em></button>

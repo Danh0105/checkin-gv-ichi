@@ -129,11 +129,11 @@
 .attendance-cost-backdrop { position: fixed; inset: 0; z-index: 180; display: flex; padding: 22px; align-items: center; justify-content: center; background: rgba(15, 26, 41, .52); backdrop-filter: blur(2px); }
 .attendance-cost-modal { display: flex; width: min(720px, 100%); max-height: min(850px, 92svh); overflow: hidden; flex-direction: column; border-radius: 16px; background: white; box-shadow: 0 24px 70px rgba(16, 29, 47, .28); animation: attendance-modal-in .18s ease-out; }
 @keyframes attendance-modal-in { from { transform: translateY(12px); opacity: .75; } }
-.attendance-cost-modal > header { display: flex; min-height: 72px; padding: 14px 17px; flex: 0 0 auto; align-items: center; justify-content: space-between; border-bottom: 1px solid #e5e8ed; }
+.attendance-cost-modal > header { position: relative; display: flex; min-height: 72px; padding: 14px 17px 14px 68px; flex: 0 0 auto; align-items: center; justify-content: flex-start; border-bottom: 1px solid #e5e8ed; }
 .attendance-cost-modal > header > div { display: flex; flex-direction: column; }
 .attendance-cost-modal > header h2 { margin: 0; font-size: 17px; }
 .attendance-cost-modal > header p { margin: 4px 0 0; color: #808b98; font-size: 10px; }
-.attendance-cost-modal > header > button { display: grid; width: 34px; height: 34px; padding: 0; place-items: center; border: 0; border-radius: 50%; color: #697586; background: #eef0f3; font-size: 20px; }
+.attendance-cost-modal > header > button { position: absolute; left: 17px; display: grid; width: 34px; height: 34px; padding: 0; place-items: center; border: 0; border-radius: 50%; color: #697586; background: #eef0f3; font-size: 20px; }
 .attendance-modal-handle { display: none; }
 .attendance-cost-content { min-height: 0; padding: 15px 17px 18px; overflow-y: auto; }
 .attendance-cost-notice { margin: 0 0 12px; padding: 9px 10px; border-radius: 8px; color: #865b17; background: #fff7e7; font-size: 10px; line-height: 1.45; }
