@@ -7,6 +7,9 @@ import {
   LessonReportForm,
   ListResponse,
   Teacher,
+  TeacherLocationChangeRequest,
+  TeacherLocationRequestStatus,
+  TeacherLocationUpdateResult,
   TeachingConfirmationPayload,
   TeachingNotification,
   TeachingSchedule,
@@ -91,6 +94,13 @@ export const teacherMiniApi = {
   },
   teacher: {
     me: () => request<Teacher>("/teachers/me"),
+    /** status:"captured" áp dụng ngay (dùng thẳng latitude/longitude trả về); status:"pending" tạo yêu cầu chờ duyệt — gọi lại teacher.me() để lấy pendingLocation. */
+    updateLocation: (position: GeoPosition) => request<TeacherLocationUpdateResult>("/teachers/me/location", { method: "POST", body: JSON.stringify({ latitude: position.latitude, longitude: position.longitude }) }),
+    locationChangeRequests: {
+      list: (params: { page?: number; limit?: number } = {}) => request<ListResponse<TeacherLocationChangeRequest>>(`/teachers/location-change-requests${toQuery(params)}`),
+      approve: (id: number, note?: string | null) => request<{ id: number; status: TeacherLocationRequestStatus }>(`/teachers/location-change-requests/${id}/approve`, { method: "PATCH", body: JSON.stringify({ note: note ?? null }) }),
+      reject: (id: number, note: string) => request<{ id: number; status: TeacherLocationRequestStatus }>(`/teachers/location-change-requests/${id}/reject`, { method: "PATCH", body: JSON.stringify({ note }) }),
+    },
   },
   schedules: {
     me: (params: { isActive?: boolean; limit?: number } = {}) => request<ListResponse<TeachingSchedule>>(`/teaching-schedules/me${toQuery(params)}`),

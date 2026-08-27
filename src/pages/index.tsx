@@ -18,8 +18,10 @@ import { teacherMiniApi, TeacherApiError } from "@/services/teacher-mini-api";
 import { getTeacherProfilePreferences, saveTeacherProfilePreferences, TeacherProfilePreferences } from "@/services/profile-preferences";
 import { readZaloIdentity, requestFollowOA, ZaloIdentity } from "@/services/zalo-identity";
 import { registerFcmToken, unregisterFcmToken } from "@/services/fcm";
+import { vibrateAlert } from "@/services/haptics";
 import { connectSocket, disconnectSocket, onSocketResync, onTeacherNotification } from "@/services/socket";
-import { Teacher, TeachingRole, TeachingUser } from "@/types/teaching";
+import { hasTeacherRole, Teacher, TeachingRole, TeachingUser } from "@/types/teaching";
+import { getCurrentPosition, googleMapsUrl } from "@/utils/geo";
 import { createProfileAvatarDataUrl, PROFILE_AVATAR_ACCEPT } from "@/utils/profile-avatar";
 
 type ProtectedFeature = "schedule" | "attendance" | "income" | "open" | "notifications" | "profile";
@@ -64,7 +66,8 @@ function PublicHome({ user, notificationsOpen, onFeature, onCloseNotifications }
     if (!user) return;
     const offNotification = onTeacherNotification((item) => {
       setUnread((value) => value + 1);
-      if (item.type === "TEACHING_SCHEDULE_CONFIRM_REQUEST" || item.type === "TEACHING_SCHEDULE_CONFIRM_ALERT") notify(item.message || "Bạn có lịch dạy cần xác nhận", "warning");
+      if (item.type === "TEACHING_SCHEDULE_CONFIRM_REQUEST" || item.type === "TEACHING_SCHEDULE_CONFIRM_ALERT") { notify(item.message || "Bạn có lịch dạy cần xác nhận", "warning"); vibrateAlert(); }
+      if (item.type === "TEACHER_LOCATION_CHANGE_RESULT") notify(item.message || (item.meta?.approved === false ? "Yêu cầu đổi vị trí của bạn đã bị từ chối." : "Vị trí mới của bạn đã được duyệt."), item.meta?.approved === false ? "warning" : "success");
     });
     const offResync = onSocketResync(refreshUnread);
     return () => { offNotification(); offResync(); };
@@ -171,6 +174,7 @@ function ProfilePage({ user, onHome, onIncome, onLogout, onProfileChange }: { us
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [editing, setEditing] = useState(false);
+  const [updatingLocation, setUpdatingLocation] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -178,6 +182,34 @@ function ProfilePage({ user, onHome, onIncome, onLogout, onProfileChange }: { us
     getTeacherProfilePreferences(user.id).then((result) => { if (active) setPreferences(result); }).catch(() => undefined);
     return () => { active = false; };
   }, [user.id]);
+
+  useEffect(() => onTeacherNotification((item) => {
+    if (item.type === "TEACHER_LOCATION_CHANGE_RESULT") teacherMiniApi.teacher.me().then(setProfile).catch(() => undefined);
+  }), []);
+
+  const hasLocation = profile?.latitude != null && profile?.longitude != null;
+  const locationPending = profile?.locationChangeStatus === "pending";
+
+  const updateLocation = async () => {
+    if (updatingLocation || locationPending) return;
+    setUpdatingLocation(true);
+    try {
+      const position = await getCurrentPosition();
+      const result = await teacherMiniApi.teacher.updateLocation(position);
+      if (result.status === "captured") {
+        setProfile((current) => current ? { ...current, latitude: result.latitude, longitude: result.longitude, locationChangeStatus: null, pendingLocation: null } : current);
+        openSnackbar({ text: "Đã ghi nhận vị trí.", type: "success", position: "bottom", duration: 3200, icon: true, zIndex: 250 });
+      } else {
+        const refreshed = await teacherMiniApi.teacher.me();
+        setProfile(refreshed);
+        openSnackbar({ text: "Đã gửi yêu cầu đổi vị trí, chờ Giáo vụ/Nhân sự duyệt.", type: "warning", position: "bottom", duration: 3200, icon: true, zIndex: 250 });
+      }
+    } catch (error) {
+      openSnackbar({ text: error instanceof Error ? error.message : "Không thể lấy vị trí hiện tại.", type: "error", position: "bottom", duration: 3200, icon: true, zIndex: 250 });
+    } finally {
+      setUpdatingLocation(false);
+    }
+  };
 
   const name = preferences?.name || profile?.name || user.name;
   const phone = preferences?.phone || profile?.phone || user.phone || "";
@@ -200,6 +232,13 @@ function ProfilePage({ user, onHome, onIncome, onLogout, onProfileChange }: { us
         <div><span>Số điện thoại</span><b>{loading && !phone ? "Đang tải…" : phone || "Chưa cập nhật"}</b></div>
         <div><span>Email</span><b>{loading && !email ? "Đang tải…" : email || "Chưa cập nhật"}</b></div>
         {loadError && <p role="status">{loadError}</p>}
+      </section>
+      <section className="profile-location-card" aria-label="Vị trí của tôi">
+        <header><span>Vị trí của tôi</span></header>
+        {hasLocation ? <div className="profile-location-current"><div className="profile-location-row-heading"><span>Vị trí hiện tại</span><b className="profile-location-badge tone-done">Đã duyệt</b></div><b>{profile!.latitude!.toFixed(6)}, {profile!.longitude!.toFixed(6)}</b><a href={googleMapsUrl(profile!.latitude!, profile!.longitude!)} target="_blank" rel="noreferrer">Xem trên bản đồ</a></div>
+          : <p className="profile-location-empty">{loading ? "Đang tải…" : "Chưa có vị trí"}</p>}
+        {locationPending && profile?.pendingLocation && <div className="profile-location-pending"><div className="profile-location-row-heading"><span>Vị trí đề nghị</span><b className="profile-location-badge tone-pending">Đang chờ duyệt</b></div><b>{profile.pendingLocation.latitude.toFixed(6)}, {profile.pendingLocation.longitude.toFixed(6)}</b><small>Vị trí này chưa dùng để chấm công cho đến khi được duyệt.</small></div>}
+        <button type="button" className="profile-location-button" onClick={updateLocation} disabled={updatingLocation || locationPending}>{updatingLocation ? "Đang lấy vị trí…" : locationPending ? "Đang chờ duyệt" : hasLocation ? "Cập nhật vị trí" : "Ghi nhận vị trí"}</button>
       </section>
       <section className="profile-actions" aria-label="Tác vụ tài khoản">
         <button type="button" onClick={onIncome}><span><PublicIcon name="income" size={19} /> Thu nhập của tôi</span><em>›</em></button>
@@ -352,13 +391,13 @@ export default function HomePage({ initialFeature }: { initialFeature?: Protecte
           if (active) setSessionMessage("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.");
           return;
         }
-        if (!payload.roles.includes("giaovien") && !payload.roles.includes("nhansu")) {
+        if (!hasTeacherRole(payload.roles) && !payload.roles.includes("nhansu")) {
           await clearAccessToken();
           if (active) setSessionMessage("Tài khoản này không có quyền sử dụng chức năng chấm công.");
           return;
         }
         if (active) {
-          const preferences = payload.roles.includes("giaovien") ? await getTeacherProfilePreferences(payload.sub).catch(() => null) : null;
+          const preferences = hasTeacherRole(payload.roles) ? await getTeacherProfilePreferences(payload.sub).catch(() => null) : null;
           setCurrentUser({ id: payload.sub, name: preferences?.name || payload.name, phone: preferences?.phone || undefined, email: preferences?.email || undefined, roles: payload.roles as TeachingRole[] });
           if (payload.roles.includes("nhansu")) setView("hr-attendance");
           else if (initialFeature) setView(initialFeature === "profile" ? "profile" : initialFeature === "notifications" ? "home" : "teacher");
@@ -383,7 +422,7 @@ export default function HomePage({ initialFeature }: { initialFeature?: Protecte
   // Socket.IO (thông báo realtime khi app đang mở) + đăng ký FCM token — chạy cho mọi phiên đăng nhập
   // thành công, kể cả khôi phục phiên lúc mở lại app, không chỉ lần bấm nút Đăng nhập.
   useEffect(() => {
-    if (!currentUser?.roles.includes("giaovien")) {
+    if (!currentUser || !hasTeacherRole(currentUser.roles)) {
       disconnectSocket();
       return;
     }
@@ -426,10 +465,10 @@ export default function HomePage({ initialFeature }: { initialFeature?: Protecte
 
   const login = async (phone: string, password: string, zalo?: ZaloIdentity) => {
     const result = await teacherMiniApi.auth.login(phone, password, zalo);
-    if (!result.user.roles.includes("giaovien") && !result.user.roles.includes("nhansu")) throw new Error("Tài khoản này không có quyền sử dụng chức năng chấm công.");
+    if (!hasTeacherRole(result.user.roles) && !result.user.roles.includes("nhansu")) throw new Error("Tài khoản này không có quyền sử dụng chức năng chấm công.");
     await saveAccessToken(result.access_token);
     setSessionMessage("");
-    const preferences = result.user.roles.includes("giaovien") ? await getTeacherProfilePreferences(result.user.id).catch(() => null) : null;
+    const preferences = hasTeacherRole(result.user.roles) ? await getTeacherProfilePreferences(result.user.id).catch(() => null) : null;
     setCurrentUser({ ...result.user, name: preferences?.name || result.user.name, phone: preferences?.phone || result.user.phone, email: preferences?.email || result.user.email });
     if (result.user.roles.includes("nhansu")) {
       setView("hr-attendance");

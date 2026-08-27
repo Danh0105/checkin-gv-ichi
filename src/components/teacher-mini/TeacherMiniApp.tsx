@@ -11,6 +11,7 @@ import { CHECKIN_IMAGE_ACCEPT, formatLessonReportDue, isVideoFile, isVideoMedia,
 import { formatDistance, getCurrentPosition, haversineDistance } from "@/utils/geo";
 import { getSessionAttendanceAction, sessionAttendanceLabel } from "@/utils/session-attendance";
 import { onSocketResync, onTeacherNotification } from "@/services/socket";
+import { vibrateAlert } from "@/services/haptics";
 
 type MiniTab = "schedule" | "attendance" | "income" | "open";
 type ScheduleMode = "day" | "week" | "month";
@@ -170,6 +171,46 @@ export function ConfirmationRejectSheet({ target, onClose, onSubmit }: { target:
   return <Sheet title="Từ chối lịch dạy" onClose={onClose} closeDisabled={submitting}><form className="mini-form confirmation-reject-form" onSubmit={submit}><div className="sheet-session-summary"><b>{target.item.subjectName} · {target.item.schoolName}</b><span>{target.entityType === "schedule" ? `${target.item.dayOfWeekLabel || dayLabel(target.item.dayOfWeek)}, ${formatTime(target.item.startTime)}–${formatTime(target.item.endTime)}` : `${formatDate(target.item.date)} · ${formatTime(target.item.startTime)}–${formatTime(target.item.endTime)}`}</span></div><label>Lý do từ chối <b>*</b><textarea aria-label="Lý do từ chối" aria-invalid={Boolean(error)} maxLength={1000} rows={5} value={reason} onChange={(event) => { setReason(event.target.value); setError(""); }} placeholder="Ví dụ: Tôi đã có lịch công tác trùng thời gian này" /><small className={reason.length >= 1000 ? "over-limit" : ""}>{reason.length}/1000</small></label>{error && <p className="mini-form-error" role="alert">{error}</p>}<button className="mini-danger-button" disabled={submitting}>{submitting ? "Đang gửi…" : "Xác nhận từ chối"}</button></form></Sheet>;
 }
 
+export function BulkConfirmationSheet({ targets, onClose, onConfirmSelected }: { targets: ConfirmationTarget[]; onClose: () => void; onConfirmSelected: (selected: ConfirmationTarget[]) => Promise<void> }) {
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set(targets.map(confirmationKey)));
+  const [submitting, setSubmitting] = useState(false);
+  const toggle = (key: string) => setSelectedKeys((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; });
+  const allSelected = targets.length > 0 && selectedKeys.size === targets.length;
+  const toggleAll = () => setSelectedKeys(allSelected ? new Set() : new Set(targets.map(confirmationKey)));
+  const selectedTargets = targets.filter((target) => selectedKeys.has(confirmationKey(target)));
+  const submit = async () => {
+    if (!selectedTargets.length || submitting) return;
+    setSubmitting(true);
+    try { await onConfirmSelected(selectedTargets); }
+    finally { setSubmitting(false); }
+  };
+  return <Sheet title="Xác nhận nhiều lịch dạy" onClose={onClose} closeDisabled={submitting}>
+    <div className="bulk-confirmation-content">
+      <label className="bulk-confirmation-select-all"><input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={!targets.length} /> Chọn tất cả ({targets.length})</label>
+      <div className="bulk-confirmation-list">
+        {targets.map((target) => {
+          const key = confirmationKey(target);
+          const item = target.item;
+          const summary = target.entityType === "schedule"
+            ? `${target.item.dayOfWeekLabel || dayLabel(target.item.dayOfWeek)}, ${formatTime(target.item.startTime)}–${formatTime(target.item.endTime)} (lặp lại)`
+            : `${formatDate(target.item.date)}, ${formatTime(target.item.startTime)}–${formatTime(target.item.endTime)}`;
+          return <label className="bulk-confirmation-item" key={key}>
+            <input type="checkbox" checked={selectedKeys.has(key)} onChange={() => toggle(key)} />
+            <span>
+              <b>{item.subjectName} · {item.schoolName}</b>
+              <small>{summary}</small>
+            </span>
+          </label>;
+        })}
+        {!targets.length && <div className="mini-empty-list">Không có lịch nào cần xác nhận</div>}
+      </div>
+    </div>
+    <footer className="bulk-confirmation-footer">
+      <button type="button" className="confirmation-accept" disabled={!selectedTargets.length || submitting} onClick={submit}>{submitting ? "Đang xác nhận…" : `Xác nhận đã chọn (${selectedTargets.length})`}</button>
+    </footer>
+  </Sheet>;
+}
+
 function SessionCard({ session, planned = false, onClick }: { session: TeachingSession; planned?: boolean; onClick?: () => void }) {
   return <button type="button" disabled={!onClick} onClick={onClick} className={`teacher-session-card ${planned ? "planned" : ""}`}>
     <div className="session-time"><strong>{formatTime(session.startTime)}</strong><span>{formatTime(session.endTime)}</span></div>
@@ -203,10 +244,10 @@ function WeeklyTimetable({ sessions, weekStart, schoolName, schoolYear, onSelect
   const rows = slots.map((slot) => {
     const phase = minutes(slot.startTime) < 12 * 60 ? "SÁNG" : "CHIỀU";
     const period = slot.isBreak ? 0 : phase === "SÁNG" ? ++morningPeriod : ++afternoonPeriod;
-    return { ...slot, phase, period, firstOfPhase: period === 1 };
+    return { ...slot, phase, period };
   });
 
-      return <div className="weekly-timetable-card"><div className="timetable-heading"><span>{schoolName}</span><div><b>TKB</b><small>NĂM HỌC <strong>{schoolYear}</strong></small></div><em>{formatDate(days[0].date)} – {formatDate(days[6].date)}</em></div><div className="timetable-scroll" role="region" aria-label="Thời khóa biểu tuần"><div className="teacher-timetable"><div className="timetable-row timetable-main-header"><div className="sticky-session">BUỔI</div><div className="sticky-period">TIẾT</div><div className="sticky-time">THỜI GIAN</div>{days.map((day) => <div key={day.date} className="timetable-day-heading"><b>{day.label}</b><span>{formatDate(day.date).slice(0, 5)}</span></div>)}</div><div className="timetable-row timetable-sub-header"><div className="sticky-session" /><div className="sticky-period" /><div className="sticky-time" />{days.map((day) => <div key={day.date}><span>Lớp</span><span>GV dạy</span></div>)}</div>{rows.map((row) => <div className={`timetable-row timetable-slot-row phase-${row.phase === "SÁNG" ? "morning" : "afternoon"} ${row.isBreak ? "timetable-break-row" : ""}`} key={`${row.startTime}-${row.endTime}`}><div className="sticky-session">{row.firstOfPhase ? row.phase : ""}</div><div className="sticky-period">{row.isBreak ? <span>RA<br />CHƠI</span> : row.period}</div><div className="sticky-time"><b>{row.startTime}</b><span>– {row.endTime}</span></div>{days.map((day) => { if (row.isBreak) return <div className="timetable-cell timetable-break-cell" key={day.date} />; const cellItems = sessions.filter((session) => session.date === day.date && formatTime(session.startTime) === row.startTime && formatTime(session.endTime) === row.endTime); return <div className="timetable-cell" key={day.date}>{cellItems.length ? cellItems.map((session) => { const planned = session.id < 0; return <button type="button" onClick={() => onSelect(session)} className={`${planned ? "planned" : "actual"} ${session.status === "CANCELLED" ? "cancelled" : ""}`} key={session.id}><span>{session.className || "—"}</span><b>{session.teacherName || "—"}</b><small>{session.subjectName} · {session.schoolName}</small><TimetableConfirmationMark session={session} planned={planned} />{!planned && <CellBadges session={session} />}</button>; }) : <span className="timetable-empty-cell">—</span>}</div>; })}</div>)}</div></div><div className="timetable-hint"><span className="actual" /> Buổi chính thức <span className="planned" /> Buổi dự kiến · Vuốt ngang để xem các ngày</div></div>;
+      return <div className="weekly-timetable-card"><div className="timetable-heading"><span>{schoolName}</span><div><b>TKB</b><small>NĂM HỌC <strong>{schoolYear}</strong></small></div><em>{formatDate(days[0].date)} – {formatDate(days[6].date)}</em></div><div className="timetable-scroll" role="region" aria-label="Thời khóa biểu tuần"><div className="teacher-timetable"><div className="timetable-row timetable-main-header"><div className="sticky-slot">TIẾT</div>{days.map((day) => <div key={day.date} className="timetable-day-heading"><b>{day.label}</b><span>{formatDate(day.date).slice(0, 5)}</span></div>)}</div><div className="timetable-row timetable-sub-header"><div className="sticky-slot" />{days.map((day) => <div key={day.date}><span>Lớp</span><span>GV dạy</span></div>)}</div>{rows.map((row) => <div className={`timetable-row timetable-slot-row phase-${row.phase === "SÁNG" ? "morning" : "afternoon"} ${row.isBreak ? "timetable-break-row" : ""}`} key={`${row.startTime}-${row.endTime}`}><div className="sticky-slot">{row.isBreak ? <span className="slot-break">Ra chơi</span> : <><span className={`slot-phase-tag ${row.phase === "SÁNG" ? "tag-morning" : "tag-afternoon"}`}>{row.phase === "SÁNG" ? "Sáng" : "Chiều"} {row.period}</span><b className="slot-time">{row.startTime}–{row.endTime}</b></>}</div>{days.map((day) => { if (row.isBreak) return <div className="timetable-cell timetable-break-cell" key={day.date} />; const cellItems = sessions.filter((session) => session.date === day.date && formatTime(session.startTime) === row.startTime && formatTime(session.endTime) === row.endTime); return <div className="timetable-cell" key={day.date}>{cellItems.length ? cellItems.map((session) => { const planned = session.id < 0; return <button type="button" onClick={() => onSelect(session)} className={`${planned ? "planned" : "actual"} ${session.status === "CANCELLED" ? "cancelled" : ""}`} key={session.id}><span>{session.className || "—"}</span><b>{session.teacherName || "—"}</b><small>{session.subjectName} · {session.schoolName}</small><TimetableConfirmationMark session={session} planned={planned} />{!planned && <CellBadges session={session} />}</button>; }) : <span className="timetable-empty-cell">—</span>}</div>; })}</div>)}</div></div><div className="timetable-hint"><span className="actual" /> Buổi chính thức <span className="planned" /> Buổi dự kiến · Vuốt ngang để xem các ngày</div></div>;
 }
 
 function MonthCalendar({ sessions, monthDate, onSelectDate, onSelectSession }: { sessions: TeachingSession[]; monthDate: Date; onSelectDate: (date: Date) => void; onSelectSession: (session: TeachingSession) => void }) {
@@ -520,6 +561,7 @@ export function ScheduleScreen({ notify, onProfileMissing, onLessonSubmitted, on
   const [resumeDecline, setResumeDecline] = useState<TeachingSession | null>(null);
   const [confirmingConfirmation, setConfirmingConfirmation] = useState<ConfirmationTarget | null>(null);
   const [rejectingConfirmation, setRejectingConfirmation] = useState<ConfirmationTarget | null>(null);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
   const [confirmationBusy, setConfirmationBusy] = useState<string | null>(null);
   const openedConfirmationNavigation = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -560,6 +602,10 @@ export function ScheduleScreen({ notify, onProfileMissing, onLessonSubmitted, on
   const summary = { sessions: actualSessions.length, periods: actualSessions.reduce((sum, item) => sum + periodsOf(item), 0), amount: actualSessions.reduce((sum, item) => sum + (item.amount ?? 0), 0), unpriced: actualSessions.some((item) => item.amount == null) };
   const selectedSchoolName = schoolFilter === "all" ? "Tất cả trường" : schoolOptions.find(([id]) => String(id) === schoolFilter)?.[1] || "Trường";
   const schoolYear = visible.find((item) => item.schoolYear)?.schoolYear || "—";
+  const pendingConfirmations = useMemo<ConfirmationTarget[]>(() => [
+    ...schedules.filter((item) => item.confirmationStatus === "PENDING").map((item) => ({ entityType: "schedule" as const, item })),
+    ...sessions.filter((item) => item.confirmationStatus === "PENDING").map((item) => ({ entityType: "session" as const, item })),
+  ], [schedules, sessions]);
 
   const refreshConfirmationData = async () => {
     const [sessionResult, scheduleResult] = await Promise.all([
@@ -615,6 +661,20 @@ export function ScheduleScreen({ notify, onProfileMissing, onLessonSubmitted, on
     catch (error) { if (error instanceof TeacherApiError && error.status === 409) await handleConfirmationConflict(); throw error; }
   };
 
+  const confirmSelected = async (targets: ConfirmationTarget[]) => {
+    const results = await Promise.allSettled(targets.map((target) => target.entityType === "schedule"
+      ? teacherMiniApi.schedules.confirmation(target.item.id, { status: "CONFIRMED", reason: null })
+      : teacherMiniApi.sessions.confirmation(target.item.id, { status: "CONFIRMED", reason: null })));
+    const succeeded = results.filter((result) => result.status === "fulfilled").length;
+    const failed = results.length - succeeded;
+    try { await refreshConfirmationData(); } catch (error) { explainError(error, notify, onProfileMissing); }
+    onConfirmationHandled?.();
+    setBulkConfirmOpen(false);
+    if (succeeded && !failed) notify(`Đã xác nhận ${succeeded} lịch dạy.`);
+    else if (succeeded) notify(`Đã xác nhận ${succeeded} lịch dạy, ${failed} lịch không xử lý được (có thể đã được xử lý trước đó).`, "warning");
+    else notify("Không thể xác nhận các lịch đã chọn. Vui lòng thử lại.", "error");
+  };
+
   const move = (direction: number) => setDate(mode === "day" ? addDays(date, direction) : mode === "week" ? addDays(date, direction * 7) : new Date(date.getFullYear(), date.getMonth() + direction, 1));
   const openScheduleItem = (session: TeachingSession) => {
     if (session.id < 0 && session.scheduleId) {
@@ -639,11 +699,13 @@ export function ScheduleScreen({ notify, onProfileMissing, onLessonSubmitted, on
     <div className="date-navigator"><button onClick={() => move(-1)}>‹</button><label className="schedule-native-date-picker"><span>{formatScheduleDate(date, mode)}</span><input type="date" aria-label="Chọn ngày" value={toISO(date)} onChange={(event) => { if (event.target.value) setDate(fromISO(event.target.value)); }} /></label><button onClick={() => move(1)}>›</button></div>
     <label className="schedule-school-filter"><span>Trường</span><select value={schoolFilter} onChange={(event) => setSchoolFilter(event.target.value)}><option value="all">Tất cả trường</option>{schoolOptions.map(([id, name]) => <option value={String(id)} key={id}>{name}</option>)}</select></label>
     <div className="schedule-summary"><div><b>{summary.sessions}</b><span>Buổi thật</span></div><div><b>{summary.periods}</b><span>Số tiết</span></div><div><b>{summary.unpriced ? "—" : summary.amount.toLocaleString("vi-VN")}</b><span>{summary.unpriced ? "Có buổi chưa khai giá" : "Tổng tiền (₫)"}</span></div></div>
+    {pendingConfirmations.length > 0 && <button type="button" className="bulk-confirmation-trigger" onClick={() => setBulkConfirmOpen(true)}>Có {pendingConfirmations.length} lịch cần xác nhận · Chọn nhiều để xác nhận</button>}
     {loading ? <LoadingCards /> : mode === "week" ? <WeeklyTimetable sessions={visible} weekStart={range.from} schoolName={selectedSchoolName} schoolYear={schoolYear} onSelect={openScheduleItem} /> : mode === "month" ? <MonthCalendar sessions={visible} monthDate={date} onSelectDate={setDate} onSelectSession={openScheduleItem} /> : <div className="grouped-sessions">{Object.entries(grouped).map(([day, items]) => <section key={day}><header><b>{dayLabel(dayOfWeek(fromISO(day)))}</b><span>{formatDate(day)}</span></header>{items.map((item) => <SessionCard key={item.id} session={item} planned={item.id < 0} onClick={() => openScheduleItem(item)} />)}</section>)}{!visible.length && <div className="mini-empty-list">Không có buổi dạy trong khoảng đang xem</div>}<div className="planned-legend"><span /> Bấm vào tiết dự kiến để xác nhận hoặc từ chối lịch dạy</div></div>}
     {confirmingConfirmation && <Sheet className={`confirmation-action-sheet ${confirmationNavigation?.urgent ? "urgent" : ""}`} title="Xác nhận lịch dạy" onClose={() => setConfirmingConfirmation(null)} closeDisabled={confirmationBusy !== null}><div className="confirmation-action-content"><p>Vui lòng kiểm tra thông tin và phản hồi lịch dạy.</p><ConfirmationCard target={confirmingConfirmation} busy={confirmationBusy !== null} onConfirm={confirmTarget} onReject={(target) => { setConfirmingConfirmation(null); setRejectingConfirmation(target); }} /></div></Sheet>}
     {selected && <SessionDetailSheet session={selected} onClose={() => setSelected(null)} onUpdate={update} onDeclined={declined} onRefresh={refresh} onLessonSubmitted={onLessonSubmitted} notify={notify} />}
     {resumeDecline && <DeclineSheet session={resumeDecline} onClose={() => setResumeDecline(null)} onSuccess={declined} notify={notify} />}
     {rejectingConfirmation && <ConfirmationRejectSheet target={rejectingConfirmation} onClose={() => setRejectingConfirmation(null)} onSubmit={rejectTarget} />}
+    {bulkConfirmOpen && <BulkConfirmationSheet targets={pendingConfirmations} onClose={() => setBulkConfirmOpen(false)} onConfirmSelected={confirmSelected} />}
   </div>;
 }
 
@@ -732,6 +794,7 @@ function notificationPresentation(item: TeachingNotification) {
   if (type === "TEACHING_SCHEDULE_CONFIRM_REQUEST") return { className: "schedule-confirm-request", icon: "calendar" as const, title: "Lịch dạy cần xác nhận" };
   if (type === "TEACHING_SCHEDULE_CONFIRM_RESULT") return { className: "schedule-confirm-result", icon: "bell" as const, title: "Kết quả phản hồi lịch" };
   if (type === "TEACHING_SCHEDULE_CONFIRM_ALERT") return { className: "schedule-confirm-alert", icon: "clock" as const, title: "Khẩn: lịch chưa xác nhận" };
+  if (type === "TEACHER_LOCATION_CHANGE_RESULT") return { className: "location-request-result", icon: "bell" as const, title: meta?.approved === false ? "Yêu cầu đổi vị trí bị từ chối" : "Đã duyệt vị trí mới" };
   return { className: "", icon: "calendar" as const, title: item.title || "Cập nhật lịch dạy" };
 }
 
@@ -811,7 +874,8 @@ export default function TeacherMiniApp({ user, initialTab = "schedule", onHome, 
   useEffect(() => {
     const offNotification = onTeacherNotification((item) => {
       setUnread((value) => value + 1);
-      if (item.type === "TEACHING_SCHEDULE_CONFIRM_REQUEST" || item.type === "TEACHING_SCHEDULE_CONFIRM_ALERT") notify(item.message || "Bạn có lịch dạy cần xác nhận", "warning");
+      if (item.type === "TEACHING_SCHEDULE_CONFIRM_REQUEST" || item.type === "TEACHING_SCHEDULE_CONFIRM_ALERT") { notify(item.message || "Bạn có lịch dạy cần xác nhận", "warning"); vibrateAlert(); }
+      if (item.type === "TEACHER_LOCATION_CHANGE_RESULT") notify(item.message || (item.meta?.approved === false ? "Yêu cầu đổi vị trí của bạn đã bị từ chối." : "Vị trí mới của bạn đã được duyệt."), item.meta?.approved === false ? "warning" : "success");
     });
     const offResync = onSocketResync(refreshUnread);
     return () => { offNotification(); offResync(); };

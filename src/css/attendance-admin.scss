@@ -42,6 +42,21 @@
 .attendance-admin-header > section button { height: 34px; padding: 0 12px; border: 1px solid rgba(255, 255, 255, .46); border-radius: 8px; color: white; background: rgba(255, 255, 255, .1); font-size: 11px; }
 
 .attendance-admin-content { width: min(100% - 32px, 1440px); margin: 0 auto; padding: 25px 0 48px; }
+.attendance-admin-tabs { display: flex; margin-bottom: 18px; gap: 8px; }
+.attendance-admin-tabs button { height: 38px; padding: 0 16px; border: 1px solid #d9dfe7; border-radius: 9px; color: #536174; background: white; font-size: 11px; font-weight: 650; }
+.attendance-admin-tabs button.active { border-color: var(--attendance-blue); color: white; background: var(--attendance-blue); }
+.location-requests-table .attendance-session-cell a { color: var(--attendance-blue-dark); font-size: 10px; }
+.location-request-actions { display: flex; gap: 6px; }
+.location-request-actions .confirmation-accept,
+.location-request-actions .confirmation-reject { width: auto; height: 31px; padding: 0 10px; border-radius: 7px; font-size: 9px; font-weight: 650; }
+.location-request-actions .confirmation-accept { border: 0; color: white; background: #218a59; }
+.location-request-actions .confirmation-reject { border: 1px solid #e7aaa6; color: #b83f39; background: #fff7f6; }
+.location-reject-form { display: flex; min-width: 220px; flex-direction: column; gap: 6px; }
+.location-reject-form textarea { width: 100%; padding: 6px 8px; border: 1px solid #d9dfe7; border-radius: 7px; outline: none; color: #344154; background: white; font-size: 10px; resize: vertical; }
+.location-reject-form > div { display: flex; gap: 6px; }
+.location-reject-form button { height: 30px; padding: 0 10px; border: 0; border-radius: 7px; font-size: 9px; font-weight: 650; }
+.location-reject-form button:first-child { color: white; background: #b7433d; }
+.location-reject-form button:last-child { color: #536174; background: #eceff3; }
 .attendance-toolbar { display: flex; margin-bottom: 18px; align-items: flex-end; justify-content: space-between; gap: 20px; }
 .attendance-toolbar h1 { margin: 0; font-size: 25px; letter-spacing: -.4px; }
 .attendance-toolbar p { margin: 6px 0 0; color: #738090; font-size: 12px; }

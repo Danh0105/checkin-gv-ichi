@@ -45,3 +45,6 @@ export function haversineDistance(from: Pick<GeoPosition, "latitude" | "longitud
 }
 
 export const formatDistance = (meters: number) => meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(2)} km`;
+
+export const googleMapsUrl = (latitude: number, longitude: number) =>
+  `https://www.google.com/maps?q=${encodeURIComponent(`${latitude},${longitude}`)}`;

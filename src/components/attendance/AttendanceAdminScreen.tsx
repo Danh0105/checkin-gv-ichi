@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 
 import Logo from "@/components/logo";
-import { AttendanceListParams, attendanceAdminApi, TeacherApiError } from "@/services/teacher-mini-api";
+import { AttendanceListParams, attendanceAdminApi, teacherMiniApi, TeacherApiError } from "@/services/teacher-mini-api";
 import {
   AttendanceOtherCost,
   AttendanceSummary,
   BulkAttendanceItem,
   SessionStatus,
+  TeacherLocationChangeRequest,
   TeachingSession,
   TeachingUser,
 } from "@/types/teaching";
@@ -21,6 +22,7 @@ import {
   normalizeAttendanceOtherCosts,
   parseAttendanceAmount,
 } from "@/utils/attendance-other-costs";
+import { googleMapsUrl } from "@/utils/geo";
 import { currentMonthInVietnam, monthRange } from "@/utils/teacher-income";
 
 const moneyFormatter = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 });
@@ -134,6 +136,94 @@ function OtherCostsEditor({ draft, onClose, onSave }: { draft: AttendanceDraft; 
   </div>;
 }
 
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("vi-VN");
+}
+
+function LocationRequestsSection() {
+  const [requests, setRequests] = useState<TeacherLocationChangeRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [savingIds, setSavingIds] = useState<Set<number>>(() => new Set());
+  const [rejectingId, setRejectingId] = useState<number | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [message, setMessage] = useState<{ text: string; tone: "success" | "error" } | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError("");
+    teacherMiniApi.teacher.locationChangeRequests.list({ limit: 100 })
+      .then((result) => { if (active) setRequests(result.data.filter((item) => item.status === "pending")); })
+      .catch((reason: unknown) => { if (active) setLoadError(reason instanceof TeacherApiError ? reason.message : "Không thể tải danh sách yêu cầu đổi vị trí."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [reloadKey]);
+
+  useEffect(() => {
+    if (!message) return;
+    const timeout = window.setTimeout(() => setMessage(null), 3200);
+    return () => window.clearTimeout(timeout);
+  }, [message]);
+
+  const approve = async (request: TeacherLocationChangeRequest) => {
+    setSavingIds((current) => new Set(current).add(request.id));
+    try {
+      await teacherMiniApi.teacher.locationChangeRequests.approve(request.id);
+      setRequests((current) => current.filter((item) => item.id !== request.id));
+      setMessage({ text: `Đã duyệt vị trí mới của ${request.teacherName || "giáo viên"}.`, tone: "success" });
+    } catch (reason) {
+      setMessage({ text: reason instanceof Error ? reason.message : "Không thể duyệt yêu cầu.", tone: "error" });
+    } finally {
+      setSavingIds((current) => { const next = new Set(current); next.delete(request.id); return next; });
+    }
+  };
+
+  const reject = async (request: TeacherLocationChangeRequest) => {
+    const reason = rejectReason.trim();
+    if (reason.length < 5) { setMessage({ text: "Lý do từ chối phải có ít nhất 5 ký tự.", tone: "error" }); return; }
+    setSavingIds((current) => new Set(current).add(request.id));
+    try {
+      await teacherMiniApi.teacher.locationChangeRequests.reject(request.id, reason);
+      setRequests((current) => current.filter((item) => item.id !== request.id));
+      setRejectingId(null);
+      setRejectReason("");
+      setMessage({ text: `Đã từ chối yêu cầu của ${request.teacherName || "giáo viên"}.`, tone: "success" });
+    } catch (reason_) {
+      setMessage({ text: reason_ instanceof Error ? reason_.message : "Không thể từ chối yêu cầu.", tone: "error" });
+    } finally {
+      setSavingIds((current) => { const next = new Set(current); next.delete(request.id); return next; });
+    }
+  };
+
+  return <section className="attendance-detail-section location-requests-section" aria-labelledby="location-requests-title">
+    <div className="attendance-section-heading"><div><h2 id="location-requests-title">Yêu cầu đổi vị trí</h2><p>Giáo viên gửi vị trí mới khi đã có vị trí chính thức sẽ tạo yêu cầu chờ duyệt tại đây.</p></div></div>
+    {loading ? <div className="attendance-admin-loading" aria-busy="true"><span /><span /><span /></div>
+      : loadError ? <div className="attendance-admin-error" role="alert"><b>Chưa thể tải dữ liệu</b><p>{loadError}</p><button type="button" onClick={() => setReloadKey((value) => value + 1)}>Thử lại</button></div>
+      : requests.length === 0 ? <div className="attendance-admin-empty">Không có yêu cầu đổi vị trí nào đang chờ duyệt.</div>
+      : <div className="attendance-detail-table-wrap"><table className="attendance-detail-table location-requests-table">
+        <thead><tr><th>Giáo viên</th><th>Vị trí yêu cầu</th><th>Gửi lúc</th><th /></tr></thead>
+        <tbody>{requests.map((request) => {
+          const saving = savingIds.has(request.id);
+          return <tr key={request.id}>
+            <td data-label="Giáo viên"><b>{request.teacherName || "—"}</b></td>
+            <td data-label="Vị trí yêu cầu"><div className="attendance-session-cell"><b>{request.latitude.toFixed(6)}, {request.longitude.toFixed(6)}</b><a href={googleMapsUrl(request.latitude, request.longitude)} target="_blank" rel="noreferrer">Xem trên bản đồ</a></div></td>
+            <td data-label="Gửi lúc">{formatDateTime(request.createdAt)}</td>
+            <td className="attendance-row-action location-request-actions">
+              {rejectingId === request.id ? <div className="location-reject-form">
+                <textarea rows={2} maxLength={500} value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} placeholder="Lý do từ chối" aria-label={`Lý do từ chối yêu cầu của ${request.teacherName || "giáo viên"}`} autoFocus />
+                <div><button type="button" onClick={() => void reject(request)} disabled={saving}>{saving ? "Đang gửi…" : "Xác nhận từ chối"}</button><button type="button" onClick={() => { setRejectingId(null); setRejectReason(""); }} disabled={saving}>Huỷ</button></div>
+              </div> : <><button type="button" className="confirmation-accept" onClick={() => void approve(request)} disabled={saving}>{saving ? "Đang xử lý…" : "Duyệt"}</button><button type="button" className="confirmation-reject" onClick={() => { setRejectingId(request.id); setRejectReason(""); }} disabled={saving}>Từ chối</button></>}
+            </td>
+          </tr>;
+        })}</tbody>
+      </table></div>}
+    {message && <div className={`attendance-admin-toast ${message.tone}`} role="status">{message.text}</div>}
+  </section>;
+}
+
 function SummarySection({ summary }: { summary: AttendanceSummary | null }) {
   const rows = summary?.teachers ?? summary?.data ?? [];
   const grandTotal = summary?.grandTotal;
@@ -152,6 +242,7 @@ function SummarySection({ summary }: { summary: AttendanceSummary | null }) {
 }
 
 export default function AttendanceAdminScreen({ user, onLogout }: { user: TeachingUser; onLogout: () => void }) {
+  const [tab, setTab] = useState<"attendance" | "location">("attendance");
   const [month, setMonth] = useState(() => currentMonthInVietnam());
   const [sessions, setSessions] = useState<TeachingSession[]>([]);
   const [drafts, setDrafts] = useState<Record<number, AttendanceDraft>>({});
@@ -267,6 +358,11 @@ export default function AttendanceAdminScreen({ user, onLogout }: { user: Teachi
   return <main className="attendance-admin-page">
     <header className="attendance-admin-header"><Logo /><div><span>Giảng dạy <i>›</i> Chấm công</span><strong>Chi tiết chấm công</strong></div><section><small>{user.name}</small><button type="button" onClick={onLogout}>Đăng xuất</button></section></header>
     <div className="attendance-admin-content">
+      <div className="attendance-admin-tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === "attendance"} className={tab === "attendance" ? "active" : ""} onClick={() => setTab("attendance")}>Chấm công</button>
+        <button type="button" role="tab" aria-selected={tab === "location"} className={tab === "location" ? "active" : ""} onClick={() => setTab("location")}>Yêu cầu đổi vị trí</button>
+      </div>
+      {tab === "location" ? <LocationRequestsSection /> : <>
       <section className="attendance-toolbar">
         <div><h1>Chi tiết chấm công</h1><p>Chốt trạng thái, ghi chú và các khoản phát sinh theo từng buổi dạy.</p></div>
         <label>Tháng<input type="month" value={month} onChange={(event) => event.target.value && setMonth(event.target.value)} /></label>
@@ -299,6 +395,7 @@ export default function AttendanceAdminScreen({ user, onLogout }: { user: Teachi
             })}</tbody>
           </table></div>}
         </section>
+      </>}
       </>}
     </div>
     {editingDraft && <OtherCostsEditor draft={editingDraft} onClose={() => setEditingCostsId(null)} onSave={(otherCosts) => editingCostsId !== null && updateDraft(editingCostsId, (current) => ({ ...current, otherCosts }))} />}

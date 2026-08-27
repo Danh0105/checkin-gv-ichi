@@ -1,11 +1,18 @@
+/** giaovien_congty (giáo viên công ty) và giaovien_ctv (giáo viên CTV) — cùng quyền hạn như nhau ở mọi nơi hiện tại, tách ra từ role "giaovien" cũ phía backend. */
+export type TeacherRole = "giaovien_congty" | "giaovien_ctv";
+export const TEACHER_ROLES: readonly TeacherRole[] = ["giaovien_congty", "giaovien_ctv"];
+
 export type TeachingRole =
   | "nhansu"
-  | "giaovien"
+  | TeacherRole
   | "director"
   | "director_la"
   | "troly_gd"
   | "ketoan_truong"
   | "sales";
+
+export const isTeacherRole = (role: string): role is TeacherRole => (TEACHER_ROLES as readonly string[]).includes(role);
+export const hasTeacherRole = (roles: readonly string[] | null | undefined) => roles?.some(isTeacherRole) ?? false;
 
 export type SessionStatus = "SCHEDULED" | "PRESENT" | "ABSENT" | "EXCUSED" | "CANCELLED";
 export type AssignmentStatus = "OPEN" | "ASSIGNED" | "CLOSED" | "CANCELLED";
@@ -52,7 +59,7 @@ export interface TeachingUser {
   phone?: string;
   email?: string;
   roles: TeachingRole[];
-  /** Chỉ có với tài khoản role "giaovien" đã liên kết Zalo. */
+  /** Chỉ có với tài khoản role giáo viên (giaovien_congty/giaovien_ctv) đã liên kết Zalo. */
   zaloUid?: string;
   zaloId?: string;
 }
@@ -71,6 +78,38 @@ export interface Teacher {
   subjectCatalogIds?: number[];
   maxPeriodsPerWeek?: number | null;
   defaultRatePerPeriod?: number | null;
+  /** Vị trí đã được duyệt/ghi nhận, dùng để so khoảng cách khi check-in. null = chưa từng khai. */
+  latitude?: number | null;
+  longitude?: number | null;
+  /** "pending" = đang có yêu cầu đổi vị trí chờ Giáo vụ/Nhân sự xử lý. */
+  locationChangeStatus?: TeacherLocationRequestStatus | null;
+  /** Vị trí mới đang chờ duyệt — chỉ có giá trị khi locationChangeStatus === "pending", KHÔNG dùng để chấm công. */
+  pendingLocation?: TeacherPendingLocation | null;
+}
+
+export interface TeacherPendingLocation {
+  latitude: number;
+  longitude: number;
+}
+
+export type TeacherLocationRequestStatus = "pending" | "approved" | "rejected";
+
+export type TeacherLocationUpdateResult =
+  | { status: "captured"; requiresApproval: false; latitude: number; longitude: number }
+  | { status: "pending"; requiresApproval: true; requestId: number };
+
+export interface TeacherLocationChangeRequest {
+  id: number;
+  teacherId: number;
+  teacherName?: string | null;
+  latitude: number;
+  longitude: number;
+  status: TeacherLocationRequestStatus;
+  createdAt: string;
+  reviewedById?: number | null;
+  reviewedByName?: string | null;
+  reviewedAt?: string | null;
+  rejectionReason?: string | null;
 }
 
 export interface TeachingSchedule {
@@ -189,12 +228,16 @@ export interface TeachingNotificationMeta {
   sessionIds?: number[];
   scheduleId?: number;
   entityType?: "schedule" | "session";
-  status?: TeachingConfirmationStatus;
+  status?: TeachingConfirmationStatus | TeacherLocationRequestStatus;
+  requestId?: number;
   reason?: string;
   date?: string;
   route?: string;
   url?: string;
   path?: string;
+  teacherId?: number;
+  /** TEACHER_LOCATION_CHANGE_RESULT: true = đã duyệt, false = đã từ chối (lý do nằm trong message). */
+  approved?: boolean;
 }
 
 export interface TeachingNotification {
@@ -221,4 +264,4 @@ export interface ListResponse<T> {
   pagination: Pagination;
 }
 
-export const isTeacher = (user: TeachingUser | null) => user?.roles?.includes("giaovien") ?? false;
+export const isTeacher = (user: TeachingUser | null) => hasTeacherRole(user?.roles);

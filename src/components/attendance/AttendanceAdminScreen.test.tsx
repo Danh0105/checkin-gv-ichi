@@ -12,8 +12,15 @@ const api = vi.hoisted(() => ({
   bulkUpdate: vi.fn(),
 }));
 
+const locationApi = vi.hoisted(() => ({
+  list: vi.fn(),
+  approve: vi.fn(),
+  reject: vi.fn(),
+}));
+
 vi.mock("@/services/teacher-mini-api", () => ({
   attendanceAdminApi: api,
+  teacherMiniApi: { teacher: { locationChangeRequests: locationApi } },
   TeacherApiError: class TeacherApiError extends Error {
     constructor(public status: number, message: string) { super(message); }
   },
@@ -72,6 +79,9 @@ beforeEach(() => {
   api.summary.mockReset().mockResolvedValue(summary);
   api.update.mockReset().mockResolvedValue(session);
   api.bulkUpdate.mockReset().mockResolvedValue([]);
+  locationApi.list.mockReset().mockResolvedValue({ data: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 1 } });
+  locationApi.approve.mockReset();
+  locationApi.reject.mockReset();
 });
 
 afterEach(() => {
@@ -121,5 +131,32 @@ describe("AttendanceAdminScreen", () => {
       status: "SCHEDULED",
       otherCosts: [],
     })]));
+  });
+
+  it("duyệt yêu cầu đổi vị trí đang chờ", async () => {
+    locationApi.list.mockResolvedValue({ data: [{ id: 5, teacherId: 10, teacherName: "Nguyễn Văn An", latitude: 10.123456, longitude: 106.654321, status: "pending", createdAt: "2026-08-25T02:00:00.000Z" }], pagination: { page: 1, limit: 100, total: 1, totalPages: 1 } });
+    locationApi.approve.mockResolvedValue({ status: "approved" });
+    render(<AttendanceAdminScreen user={{ id: 1, name: "HR", roles: ["nhansu"] }} onLogout={vi.fn()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Yêu cầu đổi vị trí" }));
+    expect(await screen.findByText("Nguyễn Văn An")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Duyệt" }));
+    await waitFor(() => expect(locationApi.approve).toHaveBeenCalledWith(5));
+    await waitFor(() => expect(screen.queryByText("Nguyễn Văn An")).not.toBeInTheDocument());
+  });
+
+  it("từ chối yêu cầu đổi vị trí kèm lý do", async () => {
+    locationApi.list.mockResolvedValue({ data: [{ id: 5, teacherId: 10, teacherName: "Nguyễn Văn An", latitude: 10.123456, longitude: 106.654321, status: "pending", createdAt: "2026-08-25T02:00:00.000Z" }], pagination: { page: 1, limit: 100, total: 1, totalPages: 1 } });
+    locationApi.reject.mockResolvedValue({ status: "rejected" });
+    render(<AttendanceAdminScreen user={{ id: 1, name: "HR", roles: ["nhansu"] }} onLogout={vi.fn()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Yêu cầu đổi vị trí" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Từ chối" }));
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận từ chối" }));
+    expect(screen.getByText(/ít nhất 5 ký tự/)).toBeInTheDocument();
+    expect(locationApi.reject).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByPlaceholderText("Lý do từ chối"), { target: { value: "Toạ độ không hợp lệ" } });
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận từ chối" }));
+    await waitFor(() => expect(locationApi.reject).toHaveBeenCalledWith(5, "Toạ độ không hợp lệ"));
+    await waitFor(() => expect(screen.queryByText("Nguyễn Văn An")).not.toBeInTheDocument());
   });
 });

@@ -10,6 +10,7 @@ const TEACHER_NOTIFICATION_EVENTS = [
   "teaching-schedule-confirm-result:new",
   "teaching-schedule-confirm-alert:new",
   "teaching-lesson-report-alert:new",
+  "teacher-location-change-result:new",
 ] as const;
 
 type NotificationListener = (notification: TeachingNotification) => void;

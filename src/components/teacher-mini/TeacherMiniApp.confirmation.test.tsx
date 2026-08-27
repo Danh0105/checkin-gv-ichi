@@ -154,6 +154,30 @@ describe("teaching schedule confirmation", () => {
     expect(await screen.findByText("✓ Đã xác nhận")).toBeInTheDocument();
   });
 
+  it("lets a teacher select multiple pending items and bulk-confirm them", async () => {
+    api.scheduleMe.mockResolvedValue({ data: [pendingSchedule], pagination: {} });
+    api.sessionMe.mockResolvedValue({ data: [pendingSession], pagination: {} });
+    api.sessionConfirmation.mockResolvedValue({ ...pendingSession, confirmationStatus: "CONFIRMED", confirmedAt: "2026-08-25T06:30:00.000Z" });
+    const notify = vi.fn();
+    render(<ScheduleScreen notify={notify} onProfileMissing={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Có 2 lịch cần xác nhận/ }));
+    expect(await screen.findByRole("dialog", { name: "Xác nhận nhiều lịch dạy" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận đã chọn (2)" }));
+    await waitFor(() => expect(api.scheduleConfirmation).toHaveBeenCalledWith(107, { status: "CONFIRMED", reason: null }));
+    await waitFor(() => expect(api.sessionConfirmation).toHaveBeenCalledWith(953, { status: "CONFIRMED", reason: null }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Đã xác nhận 2 lịch dạy."));
+    expect(screen.queryByRole("dialog", { name: "Xác nhận nhiều lịch dạy" })).not.toBeInTheDocument();
+  });
+
+  it("lets a teacher deselect an item before bulk-confirming the rest", async () => {
+    api.scheduleMe.mockResolvedValue({ data: [pendingSchedule], pagination: {} });
+    api.sessionMe.mockResolvedValue({ data: [pendingSession], pagination: {} });
+    render(<ScheduleScreen notify={vi.fn()} onProfileMissing={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Có 2 lịch cần xác nhận/ }));
+    fireEvent.click((await screen.findByText(/lặp lại/)).closest("label")!.querySelector("input")!);
+    expect(await screen.findByRole("button", { name: "Xác nhận đã chọn (1)" })).toBeInTheDocument();
+  });
+
   it("turns a 409 into a friendly message and reloads current confirmation state", async () => {
     const confirmed = { ...pendingSchedule, confirmationStatus: "CONFIRMED" as const, confirmedAt: "2026-08-25T06:25:22.621Z" };
     api.scheduleMe.mockResolvedValueOnce({ data: [pendingSchedule], pagination: {} }).mockResolvedValueOnce({ data: [confirmed], pagination: {} });
