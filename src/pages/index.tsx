@@ -107,7 +107,7 @@ function PublicHome({ user, notificationsOpen, onFeature, onCloseNotifications }
         <button className="active"><PublicIcon name="home" size={27} /><span>Trang chủ</span></button>
         <button onClick={() => onFeature("profile")}><PublicIcon name="user" size={27} /><span>{user ? "Cá nhân" : "Đăng nhập"}</span></button>
       </nav>
-      {notificationsOpen && user && <NotificationSheet onClose={onCloseNotifications} notify={notify} onCountChange={(change) => setUnread((value) => Math.max(0, value + change))} onNavigateScheduleConfirmation={() => { onCloseNotifications(); onFeature("schedule"); }} />}
+      {notificationsOpen && user && <NotificationSheet onClose={onCloseNotifications} notify={notify} onCountChange={(change) => setUnread((value) => Math.max(0, value + change))} onUnreadCountChange={setUnread} onNavigateScheduleConfirmation={() => { onCloseNotifications(); onFeature("schedule"); }} />}
     </main>
   );
 }
@@ -388,7 +388,9 @@ export default function HomePage({ initialFeature }: { initialFeature?: Protecte
       return;
     }
     connectSocket(currentUser.id);
-    void registerFcmToken();
+    void registerFcmToken((notification) => {
+      if (!notification) void teacherMiniApi.notifications.unreadCount().catch(() => undefined);
+    });
     return () => disconnectSocket();
   }, [currentUser]);
 

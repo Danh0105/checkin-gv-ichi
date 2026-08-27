@@ -28,12 +28,13 @@ function rememberSeen(id: number) {
   }
 }
 
-function dispatchNotification(notification: TeachingNotification) {
+export function dispatchTeacherNotification(notification: TeachingNotification) {
   if (typeof notification?.id === "number") {
-    if (seenNotificationIds.has(notification.id)) return;
+    if (seenNotificationIds.has(notification.id)) return false;
     rememberSeen(notification.id);
   }
   notificationListeners.forEach((listener) => listener(notification));
+  return true;
 }
 
 /** Đánh dấu một id đã xử lý để dedupe với FCM foreground (xem services/fcm.ts). */
@@ -55,14 +56,14 @@ export function connectSocket(employeeId: number): Socket {
     transports: ["websocket", "polling"],
     query: { employeeId: String(employeeId) },
   });
-  TEACHER_NOTIFICATION_EVENTS.forEach((event) => socket?.on(event, dispatchNotification));
+  TEACHER_NOTIFICATION_EVENTS.forEach((event) => socket?.on(event, dispatchTeacherNotification));
   socket.on("connect", () => resyncListeners.forEach((listener) => listener()));
   return socket;
 }
 
 export function disconnectSocket() {
   if (!socket) return;
-  TEACHER_NOTIFICATION_EVENTS.forEach((event) => socket?.off(event, dispatchNotification));
+  TEACHER_NOTIFICATION_EVENTS.forEach((event) => socket?.off(event, dispatchTeacherNotification));
   socket.disconnect();
   socket = null;
 }

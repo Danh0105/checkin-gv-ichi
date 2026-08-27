@@ -28,6 +28,16 @@ const toQuery = (params: Record<string, string | number | boolean | undefined>) 
   return result ? `?${result}` : "";
 };
 
+const teacherNotificationTypes = [
+  "TEACHING_SCHEDULE",
+  "TEACHING_SCHEDULE_CONFIRM_REQUEST",
+  "TEACHING_SCHEDULE_CONFIRM_RESULT",
+  "TEACHING_SCHEDULE_CONFIRM_ALERT",
+  "TEACHING_LESSON_REPORT_ALERT",
+] as const;
+
+const notificationTime = (item: TeachingNotification) => item.createdAt ? new Date(item.createdAt).getTime() || 0 : 0;
+
 async function request<T>(path: string, init: RequestInit = {}, authenticated = true): Promise<T> {
   const token = getAccessToken();
   const isMultipart = typeof FormData !== "undefined" && init.body instanceof FormData;
@@ -118,16 +128,39 @@ export const teacherMiniApi = {
     withdraw: (id: number) => request<void>(`/teaching-sessions/${id}/applications/me`, { method: "DELETE" }),
   },
   notifications: {
-    list: (tab: "unread" | "read", page = 1, limit = 20) => request<ListResponse<TeachingNotification>>(`/notifications/teaching-schedule${toQuery({ tab, page, limit })}`),
+    list: async (tab: "all" | "unread" | "read", page = 1, limit = 20) => {
+      const responses = await Promise.all(
+        teacherNotificationTypes.map((type) =>
+          request<ListResponse<TeachingNotification>>(`/notifications${toQuery({ type, tab: tab === "all" ? undefined : tab, page, limit })}`),
+        ),
+      );
+      const byId = new Map<number, TeachingNotification>();
+      responses.flatMap((result) => result.data).forEach((item) => byId.set(item.id, item));
+      const data = [...byId.values()].sort((left, right) => notificationTime(right) - notificationTime(left)).slice(0, limit);
+      const total = responses.reduce((sum, result) => sum + (result.pagination?.total ?? result.data.length), 0);
+      return { data, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } };
+    },
     unreadCount: async () => {
-      const result = await request<{ count?: number; unreadCount?: number }>("/notifications/teaching-schedule/unread-count");
+      const result = await request<number | { count?: number; unreadCount?: number }>("/notifications/unread-count");
+      if (typeof result === "number") return result;
       return result.unreadCount ?? result.count ?? 0;
     },
-    readAll: () => request<void>("/notifications/teaching-schedule/read-all", { method: "PATCH" }),
+    totalCount: async () => {
+      const responses = await Promise.all(
+        teacherNotificationTypes.map((type) =>
+          request<ListResponse<TeachingNotification>>(`/notifications${toQuery({ type, page: 1, limit: 1 })}`),
+        ),
+      );
+      return responses.reduce((sum, result) => sum + (result.pagination?.total ?? result.data.length), 0);
+    },
+    readAll: async () => {
+      const unread = await teacherMiniApi.notifications.list("unread", 1, 100);
+      await Promise.all(unread.data.map((item) => teacherMiniApi.notifications.read(item.id)));
+    },
     read: (id: number) => request<void>(`/notifications/${id}/read`, { method: "PATCH" }),
   },
   fcm: {
-    save: (token: string, platform: "android" | "ios" | "web") => request<void>("/employee-fcm-token/save", { method: "POST", body: JSON.stringify({ token, platform }) }),
+    save: (token: string, platform: "android" | "ios" | "web" | "zalo-miniapp") => request<void>("/employee-fcm-token/save", { method: "POST", body: JSON.stringify({ token, platform }) }),
     remove: (token: string) => request<{ removed: boolean }>("/employee-fcm-token", { method: "DELETE", body: JSON.stringify({ token }) }),
   },
 };

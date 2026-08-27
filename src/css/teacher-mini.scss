@@ -90,6 +90,7 @@
 
 .mini-segment { display: grid; padding: 3px; grid-template-columns: repeat(3, 1fr); border-radius: 10px; background: #e9edf2; }
 .mini-segment.attendance-tabs { grid-template-columns: 1fr 1fr; }
+.mini-segment.attendance-history-modes { margin: -2px 0 10px; grid-template-columns: 1fr 1fr; background: #edf2f7; }
 .mini-segment button { height: 33px; border: 0; border-radius: 8px; color: #6f7987; background: transparent; font-size: 11px; }
 .mini-segment button.active { color: var(--mini-blue-dark); background: white; box-shadow: 0 2px 6px rgba(31,45,63,.1); font-weight: 650; }
 
