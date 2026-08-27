@@ -8,9 +8,12 @@ import homeReference from "@/static/kido-home-reference.jpg";
 import {
   clearAccessToken,
   clearPendingDraft,
+  clearLoginCredentials,
   decodeToken,
+  getSavedLoginCredentials,
   initializeAuthSession,
   isTokenExpired,
+  saveLoginCredentials,
   saveAccessToken,
   setUnauthorizedHandler,
 } from "@/services/auth-session";
@@ -279,11 +282,15 @@ function ProfilePage({ user, onHome, onIncome, onLogout, onProfileChange }: { us
   </main>;
 }
 
-function LoginPage({ message, onLogin, onBack }: { message: string; onLogin: (phone: string, password: string, zalo?: ZaloIdentity) => Promise<void>; onBack: () => void }) {
+type LoginErrorTone = "default" | "account-link";
+
+export function LoginPage({ message, onLogin, onBack }: { message: string; onLogin: (phone: string, password: string, zalo?: ZaloIdentity) => Promise<void>; onBack: () => void }) {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(message);
+  const [errorTone, setErrorTone] = useState<LoginErrorTone>("default");
+  const [rememberPassword, setRememberPassword] = useState(false);
   const [zaloIdentity, setZaloIdentity] = useState<ZaloIdentity | null>(null);
   const [identityChecked, setIdentityChecked] = useState(false);
   const [oaGate, setOaGate] = useState(false);
@@ -291,7 +298,18 @@ function LoginPage({ message, onLogin, onBack }: { message: string; onLogin: (ph
   const [oaError, setOaError] = useState("");
   const [followBusy, setFollowBusy] = useState(false);
 
-  useEffect(() => setError(message), [message]);
+  useEffect(() => { setError(message); setErrorTone("default"); }, [message]);
+
+  useEffect(() => {
+    let active = true;
+    getSavedLoginCredentials().then((credentials) => {
+      if (!active || !credentials) return;
+      setPhone(credentials.phone);
+      setPassword(credentials.password);
+      setRememberPassword(true);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -299,16 +317,28 @@ function LoginPage({ message, onLogin, onBack }: { message: string; onLogin: (ph
     return () => { active = false; };
   }, []);
 
+  const toggleRememberPassword = (checked: boolean) => {
+    setRememberPassword(checked);
+    if (!checked) void clearLoginCredentials();
+  };
+
   const attemptLogin = async (identity: ZaloIdentity | null) => {
+    const normalizedPhone = phone.trim();
     setSubmitting(true);
     setError("");
+    setErrorTone("default");
     try {
-      await onLogin(phone.trim(), password, identity ?? undefined);
+      await onLogin(normalizedPhone, password, identity ?? undefined);
+      if (rememberPassword) void saveLoginCredentials({ phone: normalizedPhone, password }).catch(() => undefined);
+      else void clearLoginCredentials();
       setOaGate(false);
     } catch (loginError) {
-      if (loginError instanceof TeacherApiError && loginError.status === 400) {
+      if (loginError instanceof TeacherApiError && loginError.code === "ZALO_ID_REQUIRED") {
         setOaGateMessage(loginError.message);
         setOaGate(true);
+      } else if (loginError instanceof TeacherApiError && loginError.code === "ZALO_ID_MISMATCH") {
+        setErrorTone("account-link");
+        setError(loginError.message);
       } else {
         setError(loginError instanceof Error ? loginError.message : "Không thể đăng nhập");
       }
@@ -377,13 +407,14 @@ function LoginPage({ message, onLogin, onBack }: { message: string; onLogin: (ph
               <input id="phone" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Nhập số điện thoại" />
               <label htmlFor="password">Mật khẩu</label>
               <input id="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Nhập mật khẩu" />
+              <label className="login-remember-option" htmlFor="remember-password"><input id="remember-password" type="checkbox" checked={rememberPassword} onChange={(event) => toggleRememberPassword(event.target.checked)} /> <span>Nhớ mật khẩu</span></label>
               <button className="primary-button" disabled={submitting} type="submit">{submitting ? <span className="spinner" aria-label="Đang đăng nhập" /> : "Đăng nhập"}</button>
-              {error && <p className="login-error" role="alert">{error}</p>}
+              {error && <p className={`login-error ${errorTone === "account-link" ? "account-link" : ""}`} role="alert">{error}</p>}
             </form>
           </>
         )}
 
-        <p className="login-security-note">Mini App chỉ lưu phiên đăng nhập, không lưu mật khẩu. Nếu đang dùng mật khẩu mặc định 123456, vui lòng liên hệ phòng Nhân sự để được hỗ trợ.</p>
+        <p className="login-security-note">Mini App chỉ lưu mật khẩu trên thiết bị này khi bạn bật Nhớ mật khẩu. Nếu đang dùng mật khẩu mặc định 123456, vui lòng liên hệ phòng Nhân sự để được hỗ trợ.</p>
       </section>
     </main>
   );

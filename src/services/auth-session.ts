@@ -2,6 +2,7 @@ import { getStorage, removeStorage, setStorage } from "zmp-sdk";
 
 const TOKEN_KEY = "access_token";
 const DRAFT_KEY = "teacher_pending_draft";
+const LOGIN_CREDENTIALS_KEY = "teacher_login_credentials";
 
 let memoryToken: string | null = null;
 let unauthorizedHandler: ((message: string) => void) | null = null;
@@ -13,6 +14,11 @@ export interface TokenPayload {
   name: string;
   iat?: number;
   exp?: number;
+}
+
+export interface SavedLoginCredentials {
+  phone: string;
+  password: string;
 }
 
 export function decodeToken(token: string): TokenPayload | null {
@@ -81,4 +87,23 @@ export function clearPendingDraft() {
     await removeStorage({ keys: [DRAFT_KEY] }).catch(() => undefined);
   });
   return draftWriteQueue;
+}
+
+export async function getSavedLoginCredentials() {
+  const storage = await getStorage({ keys: [LOGIN_CREDENTIALS_KEY] });
+  const value = storage[LOGIN_CREDENTIALS_KEY];
+  if (!value || typeof value !== "object") return null;
+  const credentials = value as Partial<SavedLoginCredentials>;
+  return typeof credentials.phone === "string" && typeof credentials.password === "string"
+    ? { phone: credentials.phone, password: credentials.password }
+    : null;
+}
+
+export async function saveLoginCredentials(credentials: SavedLoginCredentials) {
+  const result = await setStorage({ data: { [LOGIN_CREDENTIALS_KEY]: credentials } });
+  if (result.errorKeys?.includes(LOGIN_CREDENTIALS_KEY)) throw new Error("Không thể lưu thông tin đăng nhập trên thiết bị");
+}
+
+export function clearLoginCredentials() {
+  return removeStorage({ keys: [LOGIN_CREDENTIALS_KEY] }).catch(() => undefined);
 }
