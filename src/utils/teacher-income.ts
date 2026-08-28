@@ -42,6 +42,10 @@ export type TeacherIncomeSummary = {
   pendingSessions: number;
   sessionsWithoutRate: number;
   sessionsWithoutAmount: number;
+  /** Phụ cấp xăng chỉ tính 1 lần cho mỗi lần đến trường (session mở block, checkinRequired === true) — tránh cộng trùng các tiết liên tục cùng buổi. */
+  totalGasAllowance: number;
+  totalDistanceKm: number;
+  payableVisits: number;
 };
 
 export type IncomeState = "confirmed" | "pending" | "not-payable";
@@ -175,9 +179,34 @@ export function incomeState(session: TeacherIncomeSession): IncomeState {
   return "not-payable";
 }
 
+/**
+ * Gộp các tiết liên tục cùng 1 lần đến trường thành 1 nhóm — ranh giới là session có
+ * checkinRequired === true (session mở block). Backend không đặt gasAllowance/distanceToSchoolKm
+ * cố định trên đúng session mở block: giá trị thật có thể nằm ở bất kỳ tiết nào trong nhóm (các
+ * tiết còn lại trả về 0), nên lấy giá trị lớn nhất trong nhóm thay vì chỉ đọc tiết mở block.
+ */
+function groupSessionsIntoVisits(sessions: TeacherIncomeSession[]) {
+  const sorted = [...sessions].sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+  const visits: TeacherIncomeSession[][] = [];
+  sorted.forEach((session) => {
+    if (session.checkinRequired === true || visits.length === 0) visits.push([session]);
+    else visits[visits.length - 1].push(session);
+  });
+  return visits;
+}
+
+function visitMax(visit: TeacherIncomeSession[], pick: (session: TeacherIncomeSession) => number | null) {
+  return visit.reduce<number | null>((max, session) => {
+    const value = pick(session);
+    if (value === null) return max;
+    return max === null ? value : Math.max(max, value);
+  }, null);
+}
+
 export function summarizeTeacherIncome(month: string, sessions: TeacherIncomeSession[]): TeacherIncomeSummary {
   const payable = sessions.filter((session) => incomeState(session) === "confirmed");
   const projected = sessions.filter((session) => incomeState(session) !== "not-payable");
+  const payableVisits = groupSessionsIntoVisits(payable);
   return {
     month,
     totalIncome: payable.reduce((total, session) => finiteMoney(session.totalAmount) ? total + session.totalAmount : total, 0),
@@ -192,6 +221,9 @@ export function summarizeTeacherIncome(month: string, sessions: TeacherIncomeSes
     pendingSessions: sessions.filter((session) => incomeState(session) === "pending").length,
     sessionsWithoutRate: sessions.filter((session) => incomeState(session) !== "not-payable" && session.ratePerPeriod === null).length,
     sessionsWithoutAmount: payable.filter((session) => !finiteMoney(session.totalAmount)).length,
+    totalGasAllowance: payableVisits.reduce((total, visit) => total + (visitMax(visit, (session) => session.gasAllowance) ?? 0), 0),
+    totalDistanceKm: payableVisits.reduce((total, visit) => total + (visitMax(visit, (session) => session.distanceToSchoolKm) ?? 0), 0),
+    payableVisits: payableVisits.length,
   };
 }
 

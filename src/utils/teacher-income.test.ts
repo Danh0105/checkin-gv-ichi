@@ -74,7 +74,28 @@ describe("teacher income calculations", () => {
       pendingSessions: 1,
       sessionsWithoutRate: 0,
       sessionsWithoutAmount: 0,
+      totalGasAllowance: 0,
+      totalDistanceKm: 0,
+      payableVisits: 1,
     });
+  });
+
+  it("tính phụ cấp xăng và số km chỉ 1 lần mỗi lần đến trường, không cộng trùng tiết liên tục", () => {
+    const sessions = [
+      // Lần đến trường 1: 2 tiết liên tục cùng buổi — tiết mở block (checkinRequired true) chưa có
+      // phụ cấp (0), số tiền thật nằm ở tiết tiếp theo. Phải lấy max trong nhóm, không chỉ đọc tiết mở block.
+      teachingSession({ id: 1, startTime: "16:00:00", endTime: "16:05:00", checkinRequired: true, gasAllowance: 0, distanceToSchoolKm: 3.39 }),
+      teachingSession({ id: 2, startTime: "16:05:00", endTime: "16:11:00", checkinRequired: false, gasAllowance: 20_000, distanceToSchoolKm: 3.39 }),
+      // Lần đến trường 2: 1 tiết, trường khác.
+      teachingSession({ id: 3, startTime: "18:00:00", endTime: "18:45:00", checkinRequired: true, gasAllowance: 15_000, distanceToSchoolKm: 6 }),
+      // Không được tính vì chưa xác nhận (SCHEDULED).
+      teachingSession({ id: 4, status: "SCHEDULED", checkinRequired: true, gasAllowance: 50_000, distanceToSchoolKm: 20 }),
+    ].map(toTeacherIncomeSession);
+
+    const summary = summarizeTeacherIncome("2026-08", sessions);
+    expect(summary.totalGasAllowance).toBe(35_000);
+    expect(summary.totalDistanceKm).toBe(9.39);
+    expect(summary.payableVisits).toBe(2);
   });
 
   it("không biến amount, periods hoặc ratePerPeriod null thành số 0 giả", () => {

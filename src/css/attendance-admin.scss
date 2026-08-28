@@ -45,7 +45,7 @@
 .attendance-admin-tabs { display: flex; margin-bottom: 18px; gap: 8px; }
 .attendance-admin-tabs button { height: 38px; padding: 0 16px; border: 1px solid #d9dfe7; border-radius: 9px; color: #536174; background: white; font-size: 11px; font-weight: 650; }
 .attendance-admin-tabs button.active { border-color: var(--attendance-blue); color: white; background: var(--attendance-blue); }
-.location-requests-table .attendance-session-cell a { color: var(--attendance-blue-dark); font-size: 10px; }
+.location-map-link { padding: 0; border: 0; color: var(--attendance-blue-dark); background: transparent; font-size: 10px; text-decoration: underline; }
 .location-request-actions { display: flex; gap: 6px; }
 .location-request-actions .confirmation-accept,
 .location-request-actions .confirmation-reject { width: auto; height: 31px; padding: 0 10px; border-radius: 7px; font-size: 9px; font-weight: 650; }

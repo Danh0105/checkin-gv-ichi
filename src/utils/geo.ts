@@ -1,4 +1,4 @@
-import { getAccessToken as getZaloAccessToken, getLocation } from "zmp-sdk";
+import { getAccessToken as getZaloAccessToken, getLocation, openWebview } from "zmp-sdk";
 
 import { resolveZaloLocation, ZaloLocationError } from "@/services/zalo-location.service";
 
@@ -48,3 +48,23 @@ export const formatDistance = (meters: number) => meters < 1000 ? `${Math.round(
 
 export const googleMapsUrl = (latitude: number, longitude: number) =>
   `https://www.google.com/maps?q=${encodeURIComponent(`${latitude},${longitude}`)}`;
+
+/**
+ * Mở URL trong webview toàn màn hình của chính Zalo. Thẻ <a target="_blank"> không mở được gì
+ * trong webview sandbox của Zalo Mini App. openOutApp() (thoát hẳn ra ngoài Zalo) không hoạt động
+ * trên thiết bị thật — nhiều khả năng cần khai báo whitelist tên miền chưa được cấp, và không có
+ * tài liệu/ví dụ chính thức. openWebview() được tài liệu hoá đầy đủ và không cần whitelist tên
+ * miền vì nội dung vẫn hiển thị trong webview do Zalo kiểm soát, nên dùng cách này ổn định hơn.
+ * Dự phòng window.open khi chạy ngoài app Zalo (vd. xem trước trên trình duyệt lúc dev).
+ */
+export async function openExternalUrl(url: string) {
+  try {
+    await openWebview({ url, config: { style: "normal" } });
+  } catch {
+    if (typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
+export function openGoogleMaps(latitude: number, longitude: number) {
+  return openExternalUrl(googleMapsUrl(latitude, longitude));
+}

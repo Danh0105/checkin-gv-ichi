@@ -3,7 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const geo = vi.hoisted(() => ({ getCurrentPosition: vi.fn(), formatDistance: (value: number) => `${value} m`, haversineDistance: vi.fn(() => 0) }));
+const geo = vi.hoisted(() => ({ getCurrentPosition: vi.fn(), formatDistance: (value: number) => `${value} m`, haversineDistance: vi.fn(() => 0), openGoogleMaps: vi.fn() }));
 const api = vi.hoisted(() => ({ checkin: vi.fn(), checkout: vi.fn(), lesson: vi.fn(), apply: vi.fn() }));
 
 vi.mock("@/utils/geo", () => geo);
@@ -54,17 +54,17 @@ describe("attendance and lesson report flows", () => {
     expect(api.checkin).not.toHaveBeenCalled();
   });
 
-  it("shows the school coordinates and a Google Maps link in the check-in popup", () => {
+  it("shows the school coordinates and a Google Maps button in the check-in popup", () => {
     render(<CheckinSheet session={{ ...session, schoolLatitude: 10.7, schoolLongitude: 106.7, schoolCheckinRadius: 250 }} onClose={vi.fn()} onSuccess={vi.fn()} />);
     expect(screen.getByText("10.700000, 106.700000 · Bán kính 250 m")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Xem trên Google Maps/ })).toHaveAttribute("href", "https://www.google.com/maps/search/?api=1&query=10.7%2C106.7");
-    expect(screen.getByRole("link", { name: /Xem trên Google Maps/ })).toHaveAttribute("target", "_blank");
+    fireEvent.click(screen.getByRole("button", { name: /Xem trên Google Maps/ }));
+    expect(geo.openGoogleMaps).toHaveBeenCalledWith(10.7, 106.7);
   });
 
   it("does not create a Maps link when the school has no coordinates", () => {
     render(<CheckinSheet session={session} onClose={vi.fn()} onSuccess={vi.fn()} />);
     expect(screen.getByText("Trường chưa được cấu hình tọa độ")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Google Maps/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Google Maps/ })).not.toBeInTheDocument();
   });
 
   it("previews and submits one check-in image with GPS", async () => {

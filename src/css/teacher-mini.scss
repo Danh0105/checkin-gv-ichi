@@ -384,7 +384,7 @@
 .checkin-school-location small { color: #7d8da0; font-size: 7.5px; }
 .checkin-school-location b { margin-top: 2px; overflow: hidden; color: #2e465d; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .checkin-school-location > div > span { margin-top: 3px; color: #647b91; font-size: 8px; line-height: 1.35; }
-.checkin-school-location > a { grid-column: 1/-1; display: grid; height: 32px; margin-top: 2px; place-items: center; border: 1px solid #9fc5eb; border-radius: 8px; color: #1267a7; background: white; font-size: 9px; font-weight: 700; text-decoration: none; }
+.checkin-school-location > button { grid-column: 1/-1; display: grid; height: 32px; margin-top: 2px; place-items: center; border: 1px solid #9fc5eb; border-radius: 8px; color: #1267a7; background: white; font-size: 9px; font-weight: 700; text-decoration: none; }
 .checkin-school-location.missing { border-color: #e2e5e9; color: #707b88; background: #f5f6f7; }
 .checkin-school-location.missing .checkin-school-pin { background: #9ca5af; }
 .checkin-photo-preview { margin: 0 0 10px; overflow: hidden; border: 1px solid #dfe5eb; border-radius: 11px; background: #f2f4f6; }

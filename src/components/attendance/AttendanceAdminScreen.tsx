@@ -22,7 +22,7 @@ import {
   normalizeAttendanceOtherCosts,
   parseAttendanceAmount,
 } from "@/utils/attendance-other-costs";
-import { googleMapsUrl } from "@/utils/geo";
+import { openGoogleMaps } from "@/utils/geo";
 import { currentMonthInVietnam, monthRange } from "@/utils/teacher-income";
 
 const moneyFormatter = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 });
@@ -209,7 +209,7 @@ function LocationRequestsSection() {
           const saving = savingIds.has(request.id);
           return <tr key={request.id}>
             <td data-label="Giáo viên"><b>{request.teacherName || "—"}</b></td>
-            <td data-label="Vị trí yêu cầu"><div className="attendance-session-cell"><b>{request.latitude.toFixed(6)}, {request.longitude.toFixed(6)}</b><a href={googleMapsUrl(request.latitude, request.longitude)} target="_blank" rel="noreferrer">Xem trên bản đồ</a></div></td>
+            <td data-label="Vị trí yêu cầu"><div className="attendance-session-cell"><b>{request.latitude.toFixed(6)}, {request.longitude.toFixed(6)}</b><button type="button" className="location-map-link" onClick={() => void openGoogleMaps(request.latitude, request.longitude)}>Xem trên bản đồ</button></div></td>
             <td data-label="Gửi lúc">{formatDateTime(request.createdAt)}</td>
             <td className="attendance-row-action location-request-actions">
               {rejectingId === request.id ? <div className="location-reject-form">

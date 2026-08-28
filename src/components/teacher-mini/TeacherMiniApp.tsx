@@ -8,7 +8,7 @@ import { clearPendingDraft, getPendingDraft, savePendingDraft } from "@/services
 import { TeacherApiError, TeachingApplicationResult, teacherMiniApi } from "@/services/teacher-mini-api";
 import { isCompanyTeacher, LessonReportForm, SessionStatus, Teacher, TeachingConfirmationStatus, TeachingNotification, TeachingSchedule, TeachingSession, TeachingUser } from "@/types/teaching";
 import { CHECKIN_IMAGE_ACCEPT, formatLessonReportDue, isVideoFile, isVideoMedia, LESSON_EVIDENCE_ACCEPT, lessonReportTiming, validateCheckinImage, validateLessonEvidenceBatch } from "@/utils/lesson-report";
-import { formatDistance, getCurrentPosition, haversineDistance } from "@/utils/geo";
+import { formatDistance, getCurrentPosition, haversineDistance, openGoogleMaps } from "@/utils/geo";
 import { getSessionAttendanceAction, sessionAttendanceLabel } from "@/utils/session-attendance";
 import { onSocketResync, onTeacherNotification } from "@/services/socket";
 import { vibrateAlert } from "@/services/haptics";
@@ -351,7 +351,6 @@ export function CheckinSheet({ session, onClose, onSuccess, onNotRequired }: { s
     && typeof session.schoolLongitude === "number" && Number.isFinite(session.schoolLongitude) && session.schoolLongitude >= -180 && session.schoolLongitude <= 180
     ? { latitude: session.schoolLatitude, longitude: session.schoolLongitude }
     : null;
-  const schoolMapsUrl = schoolPosition ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${schoolPosition.latitude},${schoolPosition.longitude}`)}` : null;
 
   useEffect(() => () => { if (fileRef.current) URL.revokeObjectURL(fileRef.current.previewUrl); }, []);
   const choose = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -389,7 +388,7 @@ export function CheckinSheet({ session, onClose, onSuccess, onNotRequired }: { s
   const progressText = progress === "locating" ? "Đang xác định vị trí…" : progress === "submitting" ? "Đang tải ảnh Check-in…" : null;
   return <Sheet title="Check-in buổi dạy" onClose={close} closeDisabled={progress !== null}><form className="mini-form checkin-photo-form" onSubmit={submit}>
     <div className="sheet-session-summary"><b>{session.subjectName} · {session.className || "—"}</b><span>{formatDate(session.date)} · {formatTime(session.startTime)}–{formatTime(session.endTime)}</span></div>
-    <section className={`checkin-school-location ${schoolPosition ? "" : "missing"}`} aria-label="Vị trí trường"><span className="checkin-school-pin" aria-hidden>⌖</span><div><small>Vị trí trường</small><b>{session.schoolName}</b>{schoolPosition ? <span>{schoolPosition.latitude.toFixed(6)}, {schoolPosition.longitude.toFixed(6)} · Bán kính {session.schoolCheckinRadius ?? 200} m</span> : <span>Trường chưa được cấu hình tọa độ</span>}</div>{schoolMapsUrl && <a href={schoolMapsUrl} target="_blank" rel="noreferrer">Xem trên Google Maps ↗</a>}</section>
+    <section className={`checkin-school-location ${schoolPosition ? "" : "missing"}`} aria-label="Vị trí trường"><span className="checkin-school-pin" aria-hidden>⌖</span><div><small>Vị trí trường</small><b>{session.schoolName}</b>{schoolPosition ? <span>{schoolPosition.latitude.toFixed(6)}, {schoolPosition.longitude.toFixed(6)} · Bán kính {session.schoolCheckinRadius ?? 200} m</span> : <span>Trường chưa được cấu hình tọa độ</span>}</div>{schoolPosition && <button type="button" onClick={() => void openGoogleMaps(schoolPosition.latitude, schoolPosition.longitude)}>Xem trên Google Maps ↗</button>}</section>
     <p className="checkin-photo-help">Chụp một ảnh tại điểm trường để xác nhận Check-in.</p>
     {preview && <figure className="checkin-photo-preview"><img src={preview.previewUrl} alt="Ảnh Check-in đã chọn" /><figcaption>{preview.file.name} · {fileSizeLabel(preview.file.size)}</figcaption></figure>}
     <div className="lesson-image-actions"><button type="button" onClick={() => cameraRef.current?.click()}>{preview ? "Chụp lại" : "Chụp ảnh"}</button><button type="button" onClick={() => libraryRef.current?.click()}>Chọn từ thư viện</button></div>
@@ -816,7 +815,7 @@ export function NotificationSheet({ onClose, notify, onCountChange, onUnreadCoun
   const [loading, setLoading] = useState(true);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const unreadCount = tab === "unread" ? items.length : unreadTotal;
-  useEffect(() => { setLoading(true); teacherMiniApi.notifications.list(tab).then((result) => setItems(result.data.filter((item) => shouldShowTeacherNotification(item, companyTeacher)))).catch((error) => explainError(error, notify)).then(() => setLoading(false)); }, [tab, companyTeacher, notify]);
+  useEffect(() => { setLoading(true); teacherMiniApi.notifications.list(tab).then((result) => setItems(result.data.filter((item) => shouldShowTeacherNotification(item, companyTeacher)))).catch((error) => explainError(error, notify)).then(() => setLoading(false)); }, [tab, companyTeacher]);
   useEffect(() => {
     if (tab === "unread") return;
     teacherMiniApi.notifications.list("unread").then((result) => setUnreadTotal(result.data.filter((item) => shouldShowTeacherNotification(item, companyTeacher)).length)).catch(() => undefined);
@@ -897,7 +896,7 @@ export default function TeacherMiniApp({ user, initialTab = "schedule", onHome, 
     teacherMiniApi.teacher.me().then((result) => { setProfile(result); setProfileMissing(false); }).catch((error) => explainError(error, notify, handleProfileMissing));
   }, [handleProfileMissing, notify, refreshUnread]);
 
-  useEffect(() => { teacherMiniApi.teacher.me().then(setProfile).catch((error) => explainError(error, notify, handleProfileMissing)); refreshUnread(); }, [handleProfileMissing, notify, refreshUnread]);
+  useEffect(() => { teacherMiniApi.teacher.me().then(setProfile).catch((error) => explainError(error, notify, handleProfileMissing)); refreshUnread(); }, [handleProfileMissing, refreshUnread]);
   useEffect(() => { void getPendingDraft<PendingDraft>().then((draft) => { if (draft?.type === "application") setTab("open"); }); }, []);
   useEffect(() => {
     const offNotification = onTeacherNotification((item) => {
@@ -908,7 +907,7 @@ export default function TeacherMiniApp({ user, initialTab = "schedule", onHome, 
     });
     const offResync = onSocketResync(refreshUnread);
     return () => { offNotification(); offResync(); };
-  }, [companyTeacher, notify, refreshUnread]);
+  }, [companyTeacher, refreshUnread]);
 
   return <main className="teacher-mini-app"><header className="teacher-app-header"><Logo /><div><span>Xin chào,</span><strong>{user.name || profile?.name}</strong></div><button className="mini-home" onClick={onHome} aria-label="Về trang chủ"><NotificationIcon name="home" size={20} /></button><button className="mini-refresh" onClick={refreshCurrentScreen} aria-label="Tải lại trang hiện tại"><NotificationIcon name="refresh" size={19} /></button><button className="mini-notification-button" onClick={() => setNotificationsOpen(true)}><NotificationIcon name="bell" size={20} />{unread > 0 && <b>{unread > 99 ? "99+" : unread}</b>}</button><button className="mini-logout" onClick={onLogout} aria-label="Đăng xuất"><NotificationIcon name="logout" size={19} /></button></header><div className="teacher-app-body">{profileMissing ? <EmptyProfile /> : tab === "schedule" ? <ScheduleScreen notify={notify} onProfileMissing={handleProfileMissing} onLessonSubmitted={refreshUnread} onConfirmationHandled={refreshUnread} confirmationNavigation={confirmationNavigation} companyTeacher={companyTeacher} refreshKey={refreshKey} /> : tab === "attendance" ? <AttendanceScreen notify={notify} onProfileMissing={handleProfileMissing} onLessonSubmitted={refreshUnread} navigationTarget={lessonNavigation} companyTeacher={companyTeacher} refreshKey={refreshKey} /> : tab === "income" ? <TeacherIncomeScreen onProfileMissing={handleProfileMissing} onBackToSchedule={() => setTab("schedule")} onLessonSubmitted={refreshUnread} companyTeacher={companyTeacher} refreshKey={refreshKey} /> : <OpenSessionsScreen profile={profile} notify={notify} onProfileMissing={handleProfileMissing} companyTeacher={companyTeacher} refreshKey={refreshKey} />}</div><nav className="teacher-bottom-nav"><button className={tab === "schedule" ? "active" : ""} onClick={() => setTab("schedule")}><MiniIcon name="calendar" /><span>Lịch của tôi</span></button><button className={tab === "attendance" ? "active" : ""} onClick={() => setTab("attendance")}><MiniIcon name="pin" /><span>Chấm công</span></button><button className={tab === "income" ? "active" : ""} onClick={() => setTab("income")}><MiniIcon name="income" /><span>Thu nhập</span></button></nav>{notificationsOpen && <NotificationSheet onClose={() => setNotificationsOpen(false)} notify={notify} onCountChange={(change) => setUnread((value) => Math.max(0, value + change))} onUnreadCountChange={setUnread} onNavigateLessonReport={(target) => { setLessonNavigation(target); setTab("attendance"); setNotificationsOpen(false); }} onNavigateScheduleConfirmation={(target) => { setConfirmationNavigation(target); setTab("schedule"); setNotificationsOpen(false); }} companyTeacher={companyTeacher} />}</main>;
 }

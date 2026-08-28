@@ -354,9 +354,13 @@ export function TeacherIncomeScreen({ onProfileMissing, onBackToSchedule, onLess
     {loading ? <IncomeLoading /> : error ? <div className="income-error" role="alert"><span>!</span><b>Chưa thể tải thu nhập</b><p>{error.message}</p>{error.retryable && <button onClick={() => setRetryKey((value) => value + 1)}>Thử lại</button>}</div> : <>
       <section className="income-total-card" aria-label={`Tổng thu nhập tháng ${formatMonth(month)}`}>
         {companyTeacher ? <>
-          <span>Phụ cấp xăng tháng {formatMonth(month)}</span>
-          <strong>Theo lần đến trường</strong>
-          <small>Phụ cấp xăng hiển thị trong từng tiết. Tổng tháng cần dữ liệu đã gộp theo lần đến trường để tránh cộng trùng các tiết liên tục.</small>
+          <span>Tổng phụ cấp xăng tháng {formatMonth(month)}</span>
+          <strong>{formatVnd(summary.totalGasAllowance)}</strong>
+          <div className="income-total-breakdown">
+            <div><small>Tổng số km</small><b>{summary.totalDistanceKm.toLocaleString("vi-VN")} km</b></div>
+            <div><small>Số lần đến trường</small><b>{summary.payableVisits} lần</b></div>
+          </div>
+          <small>Tính theo các lần đến trường đã được xác nhận (Có dạy / Nghỉ có phép có phụ cấp) trong tháng — mỗi lần đến trường tính 1 lần dù dạy liên tục nhiều tiết.</small>
         </> : <>
           <span>Tổng thu nhập nếu hoàn thành tháng {formatMonth(month)}</span>
           <strong>{formatVnd(summary.projectedIncome)}</strong>

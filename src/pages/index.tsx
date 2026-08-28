@@ -24,7 +24,7 @@ import { registerFcmToken, unregisterFcmToken } from "@/services/fcm";
 import { vibrateAlert } from "@/services/haptics";
 import { connectSocket, disconnectSocket, onSocketResync, onTeacherNotification } from "@/services/socket";
 import { hasTeacherRole, isCompanyTeacher, Teacher, TeachingNotification, TeachingRole, TeachingUser } from "@/types/teaching";
-import { getCurrentPosition, googleMapsUrl } from "@/utils/geo";
+import { getCurrentPosition, openGoogleMaps } from "@/utils/geo";
 import { createProfileAvatarDataUrl, PROFILE_AVATAR_ACCEPT } from "@/utils/profile-avatar";
 
 type ProtectedFeature = "schedule" | "attendance" | "income" | "open" | "notifications" | "profile";
@@ -261,7 +261,7 @@ function ProfilePage({ user, onHome, onIncome, onLogout, onProfileChange }: { us
       </section>
       {companyTeacher && <section className="profile-location-card" aria-label="Vị trí của tôi">
         <header><span>Vị trí của tôi</span></header>
-        {hasLocation ? <div className="profile-location-current"><div className="profile-location-row-heading"><span>Vị trí hiện tại</span><b className="profile-location-badge tone-done">Đã duyệt</b></div><b>{profile!.latitude!.toFixed(6)}, {profile!.longitude!.toFixed(6)}</b><a href={googleMapsUrl(profile!.latitude!, profile!.longitude!)} target="_blank" rel="noreferrer">Xem trên bản đồ</a></div>
+        {hasLocation ? <div className="profile-location-current"><div className="profile-location-row-heading"><span>Vị trí hiện tại</span><b className="profile-location-badge tone-done">Đã duyệt</b></div><b>{profile!.latitude!.toFixed(6)}, {profile!.longitude!.toFixed(6)}</b><button type="button" className="profile-location-map-link" onClick={() => void openGoogleMaps(profile!.latitude!, profile!.longitude!)}>Xem trên bản đồ</button></div>
           : <p className="profile-location-empty">{loading ? "Đang tải…" : "Chưa có vị trí"}</p>}
         {locationPending && profile?.pendingLocation && <div className="profile-location-pending"><div className="profile-location-row-heading"><span>Vị trí đề nghị</span><b className="profile-location-badge tone-pending">Đang chờ duyệt</b></div><b>{profile.pendingLocation.latitude.toFixed(6)}, {profile.pendingLocation.longitude.toFixed(6)}</b><small>Vị trí này chưa dùng để chấm công cho đến khi được duyệt.</small></div>}
         <button type="button" className="profile-location-button" onClick={updateLocation} disabled={updatingLocation || locationPending}>{updatingLocation ? "Đang lấy vị trí…" : locationPending ? "Đang chờ duyệt" : hasLocation ? "Cập nhật vị trí" : "Ghi nhận vị trí"}</button>

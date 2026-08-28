@@ -290,12 +290,13 @@ describe("TeacherIncomeScreen", () => {
 
   it("hiển thị phụ cấp xăng cho giáo viên công ty thay vì đơn giá mỗi tiết", async () => {
     api.me.mockResolvedValue(response([
-      teachingSession({ id: 1, amount: null, ratePerPeriod: null, gasAllowance: 20_000, distanceToSchoolKm: 0.01 }),
+      teachingSession({ id: 1, amount: null, ratePerPeriod: null, checkinRequired: true, gasAllowance: 20_000, distanceToSchoolKm: 0.01 }),
     ]));
     renderCompanyScreen();
 
-    expect(await screen.findByText("Phụ cấp xăng tháng 08/2026")).toBeInTheDocument();
-    expect(screen.getByText("Theo lần đến trường")).toBeInTheDocument();
+    expect(await screen.findByText("Tổng phụ cấp xăng tháng 08/2026")).toBeInTheDocument();
+    expect(screen.getByText("20.000 ₫")).toBeInTheDocument();
+    expect(screen.getByText("0,01 km")).toBeInTheDocument();
     expect(screen.getByText("20.000 ₫ · 0,01 km")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết thu nhập ngày 11/08/2026" }));
     expect(screen.getAllByText("Phụ cấp xăng").length).toBeGreaterThan(0);
